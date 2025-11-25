@@ -313,30 +313,63 @@ impl ListDelegate for TaskListDelegate {
                 .flex()
                 .flex_row()
                 .items_center()
+                .justify_between()
                 .pb_1()
                 .px_2()
                 .gap_2()
                 .text_sm()
-                .text_color(cx.theme().muted_foreground)
-                .cursor_default()
                 .rounded(cx.theme().radius)
-                .hover(|style| {
-                    style.bg(cx.theme().secondary)
-                })
-                .on_mouse_down(MouseButton::Left, move |_, window, _cx| {
-                    // Toggle the collapsed state
-                    let mut collapsed = collapsed_sections.borrow_mut();
-                    if collapsed.contains(&section) {
-                        collapsed.remove(&section);
-                    } else {
-                        collapsed.insert(section);
-                    }
-                    // Request a refresh to update the UI
-                    window.refresh();
-                })
-                .child(Icon::new(chevron_icon).size(px(14.)))
-                .child(Icon::new(IconName::Folder))
-                .child(task_type.clone()),
+                // Left side: collapsible section header
+                .child(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .gap_2()
+                        .flex_1()
+                        .text_color(cx.theme().muted_foreground)
+                        .cursor_default()
+                        .hover(|style| {
+                            style.bg(cx.theme().secondary)
+                        })
+                        .rounded(cx.theme().radius)
+                        .on_mouse_down(MouseButton::Left, move |_, window, _cx| {
+                            // Toggle the collapsed state
+                            let mut collapsed = collapsed_sections.borrow_mut();
+                            if collapsed.contains(&section) {
+                                collapsed.remove(&section);
+                            } else {
+                                collapsed.insert(section);
+                            }
+                            // Request a refresh to update the UI
+                            window.refresh();
+                        })
+                        .child(Icon::new(chevron_icon).size(px(14.)))
+                        .child(Icon::new(IconName::Folder))
+                        .child(task_type.clone())
+                )
+                // Right side: add task button
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .w(px(20.))
+                        .h(px(20.))
+                        .rounded(px(4.))
+                        .cursor_default()
+                        .text_color(cx.theme().muted_foreground)
+                        .hover(|style| {
+                            style
+                                .bg(cx.theme().accent)
+                                .text_color(cx.theme().accent_foreground)
+                        })
+                        .on_mouse_down(MouseButton::Left, move |_, _window, _cx| {
+                            println!("Add new task to section: {}", section);
+                            // TODO: Implement add task functionality
+                        })
+                        .child(Icon::new(IconName::Plus).size(px(14.)))
+                ),
         )
     }
 

@@ -321,37 +321,6 @@ impl StoryWorkspace {
         window: &mut Window,
         cx: &mut App,
     ) -> DockItem {
-        // Right side: Conversation on top, Chat Input on bottom
-        let right_side = DockItem::split_with_sizes(
-            Axis::Vertical,
-            vec![
-                // Top: ConversationStory
-                DockItem::tabs(
-                    vec![
-                        Arc::new(StoryContainer::panel::<ConversationStory>(window, cx)),
-                    ],
-                    None,
-                    &dock_area,
-                    window,
-                    cx,
-                ),
-                // Bottom: ChatInputStory
-                DockItem::tabs(
-                    vec![
-                        Arc::new(StoryContainer::panel::<ChatInputStory>(window, cx)),
-                    ],
-                    None,
-                    &dock_area,
-                    window,
-                    cx,
-                ),
-            ],
-            vec![None, Some(px(200.))], // Chat input takes fixed 200px height
-            &dock_area,
-            window,
-            cx,
-        );
-
         // Main layout: Left (CodeEditor) and Right (Conversation + Input)
         DockItem::split_with_sizes(
             Axis::Horizontal,
