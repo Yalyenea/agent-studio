@@ -11,7 +11,6 @@ gpui.workspace = true
 gpui-component.workspace = true
 gpui-component-assets.workspace = true
 
-fake = { version = "2.10.0", features = ["dummy"] }
 serde = "1"
 serde_json = "1"
 rand = "0.8"

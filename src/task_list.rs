@@ -1,9 +1,9 @@
 use std::{cell::RefCell, collections::HashSet, rc::Rc, time::Duration};
 
-use fake::Fake;
 use gpui::{
     App, AppContext, ClickEvent, Context, ElementId, Entity, FocusHandle, Focusable, InteractiveElement, IntoElement, MouseButton, ParentElement, Render, RenderOnce, SharedString, Styled, Subscription, Task, Timer, Window, actions, div, px, prelude::FluentBuilder
 };
+use serde::Deserialize;
 
 use gpui_component::{
     ActiveTheme, Icon, IconName, IndexPath, Selectable, Sizable,
@@ -17,7 +17,7 @@ use gpui_component::{
 actions!(list_story, [SelectedAgentTask]);
 
 /// Task status enumeration
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Default, Debug, Deserialize)]
 enum TaskStatus {
     /// Task is pending
     #[default]
@@ -30,25 +30,26 @@ enum TaskStatus {
     Failed,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Deserialize)]
 struct AgentTask {
-    name: SharedString,
-    task_type: SharedString,
+    name: String,
+    task_type: String,
     add_new_code_lines: i16,
     delete_code_lines: i16,
     status: TaskStatus,
 
+    #[serde(skip)]
     change_timestamp: i16,
+    #[serde(skip)]
     change_timestamp_str: SharedString,
+    #[serde(skip)]
     add_new_code_lines_str: SharedString,
+    #[serde(skip)]
     delete_code_lines_str: SharedString,
-    // description: String,
 }
 
 impl AgentTask {
     fn prepare(mut self) -> Self {
-        // self.change_timestamp = (self.add_new_code_lines - self.delete_code_lines) / self.delete_code_lines;
-        // self.change_timestamp_str = format!("{}", self.change_timestamp).into();
         self.add_new_code_lines_str = format!("+{}", self.add_new_code_lines).into();
         self.delete_code_lines_str = format!("-{}", self.delete_code_lines).into();
         self
@@ -152,26 +153,28 @@ impl RenderOnce for TaskListItem {
                                     .whitespace_nowrap()
                                     .child(self.agent_task.name.clone())
                             )
-                            .child(
-                                // Subtitle with metadata - conditionally shown
-                                h_flex()
-                                    .gap_1()
-                                    .text_size(px(11.))
-                                    .text_color(muted_color)
-                                    .child("2 Files ")
-                                    .child(
-                                        div()
-                                            .text_color(add_color)
-                                            .child(self.agent_task.add_new_code_lines_str.clone())
-                                    )
-                                    .child(
-                                        div()
-                                            .text_color(delete_color)
-                                            .child(self.agent_task.delete_code_lines_str.clone())
-                                    )
-                                    .child(" · ")
-                                    .child(self.agent_task.task_type.clone())
-                            )
+                            .when(show_metadata, |this| {
+                                this.child(
+                                    // Subtitle with metadata - conditionally shown
+                                    h_flex()
+                                        .gap_1()
+                                        .text_size(px(11.))
+                                        .text_color(muted_color)
+                                        .child("2 Files ")
+                                        .child(
+                                            div()
+                                                .text_color(add_color)
+                                                .child(self.agent_task.add_new_code_lines_str.clone())
+                                        )
+                                        .child(
+                                            div()
+                                                .text_color(delete_color)
+                                                .child(self.agent_task.delete_code_lines_str.clone())
+                                        )
+                                        .child(" · ")
+                                        .child(self.agent_task.task_type.clone())
+                                )
+                            })
 
                     )
             )
@@ -220,19 +223,25 @@ impl TaskListDelegate {
             .cloned()
             .collect();
         for agent_task in agent_tasks.into_iter() {
-            if let Some(ix) = self.industries.iter().position(|s| s == &agent_task.task_type) {
+            if let Some(ix) = self.industries.iter().position(|s| s.as_ref() == agent_task.task_type.as_str()) {
                 self.matched_agent_tasks[ix].push(agent_task);
             } else {
-                self.industries.push(agent_task.task_type.clone());
+                self.industries.push(agent_task.task_type.clone().into());
                 self.matched_agent_tasks.push(vec![agent_task]);
             }
         }
     }
 
-    fn extend_more(&mut self, len: usize) {
-        self._agent_tasks
-            .extend((0..len).map(|_| Rc::new(random_agent_task())));
+    fn load_all_tasks(&mut self) {
+        let tasks = load_mock_tasks();
+        self._agent_tasks = tasks.into_iter().map(Rc::new).collect();
         self.prepare(self.query.clone());
+    }
+
+    fn extend_more(&mut self, _len: usize) {
+        // For mock data, we just use the initial JSON load
+        // If we want to support pagination/lazy loading, we could cycle through tasks
+        // For now, just do nothing as all tasks are loaded initially
     }
 
     fn selected_agent_task(&self) -> Option<Rc<AgentTask>> {
@@ -479,7 +488,7 @@ impl ListStory {
             lazy_load: false,
             collapsed_sections: Rc::new(RefCell::new(HashSet::new())),
         };
-        delegate.extend_more(100);
+        delegate.load_all_tasks();
 
         let task_list = cx.new(|cx| ListState::new(delegate, window, cx).searchable(true));
 
@@ -498,7 +507,7 @@ impl ListStory {
                 }),
             ];
 
-        // Spawn a background to random refresh the list
+        // Spawn a background task to randomly update task status for demo
         cx.spawn(async move |this, cx| {
             this.update(cx, |this, cx| {
                 this.task_list.update(cx, |picker, _| {
@@ -507,10 +516,10 @@ impl ListStory {
                         ._agent_tasks
                         .iter_mut()
                         .for_each(|agent_task| {
-                            let mut new_agent_task = random_agent_task();
-                            new_agent_task.name = agent_task.name.clone();
-                            new_agent_task.task_type = agent_task.task_type.clone();
-                            *agent_task = Rc::new(new_agent_task);
+                            // Clone the task and update its status
+                            let mut updated_task = (**agent_task).clone();
+                            updated_task.status = random_status();
+                            *agent_task = Rc::new(updated_task.prepare());
                         });
                     picker.delegate_mut().prepare("");
                 });
@@ -556,29 +565,31 @@ impl ListStory {
     }
 }
 
-fn random_agent_task() -> AgentTask {
-    let add_new_code_lines = (0..999).fake::<i16>();
-    let delete_code_lines = (0..999).fake::<i16>();
+/// Load mock agent tasks from JSON file
+fn load_mock_tasks() -> Vec<AgentTask> {
+    let json_data = include_str!("../mock_tasks.json");
+    match serde_json::from_str::<Vec<AgentTask>>(json_data) {
+        Ok(tasks) => tasks.into_iter().map(|task| task.prepare()).collect(),
+        Err(e) => {
+            eprintln!("Failed to load mock tasks: {}", e);
+            Vec::new()
+        }
+    }
+}
 
-    // Randomly generate task status
-    let status = match (0..4).fake::<u8>() {
+/// Generate a random task status for demo purposes
+fn random_status() -> TaskStatus {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let seed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos() as u8;
+    match seed % 4 {
         0 => TaskStatus::Pending,
         1 => TaskStatus::InProgress,
         2 => TaskStatus::Completed,
         _ => TaskStatus::Failed,
-    };
-
-    AgentTask {
-        name: fake::faker::filesystem::en::FileName()
-            .fake::<String>()
-            .into(),
-        task_type: fake::faker::filesystem::en::MimeType().fake::<String>().into(),
-        add_new_code_lines,
-        delete_code_lines,
-        status,
-        ..Default::default()
     }
-    .prepare()
 }
 
 impl Focusable for ListStory {
