@@ -385,10 +385,10 @@ impl DockWorkspace {
     ) {
         // Random pick up a panel to add
         let panel = match rand::random::<usize>() % 2 {
-            0 => Arc::new(DockPanelContainer::panel::<CollapsibleStory>(window, cx)),
-            // 1 => Arc::new(DockPanelContainer::panel::<CodeEditorPanel>(window, cx)),
-            2 => Arc::new(DockPanelContainer::panel::<CollapsibleStory>(window, cx)),
-            _ => Arc::new(DockPanelContainer::panel::<CollapsibleStory>(window, cx)),
+            0 => Arc::new(DockPanelContainer::panel::<ConversationPanel>(window, cx)),
+            1 => Arc::new(DockPanelContainer::panel::<ConversationPanel>(window, cx)),
+            // 2 => Arc::new(DockPanelContainer::panel::<ConversationPanel>(window, cx)),
+            _ => Arc::new(DockPanelContainer::panel::<ConversationPanel>(window, cx)),
         };
 
         self.dock_area.update(cx, |dock_area, cx| {

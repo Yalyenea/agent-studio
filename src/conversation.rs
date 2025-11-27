@@ -1,6 +1,6 @@
 use gpui::{
     div, prelude::FluentBuilder as _, px, App, AppContext, Context, ElementId, Entity,
-    FocusHandle, Focusable, InteractiveElement, IntoElement, ParentElement, Pixels, Render,
+    FocusHandle, Focusable, IntoElement, ParentElement, Pixels, Render,
     SharedString, Styled, Window,
 };
 
@@ -19,8 +19,7 @@ use gpui_component::{
 use crate::{
     conversation_schema::{
         AgentMessageDataSchema, ContentBlockSchema, ConversationItem, PlanEntrySchema, PlanSchema,
-        ResourceContentsSchema, ToolCallContentItemSchema, ToolCallItemSchema, ToolCallSchema,
-        UserMessageDataSchema,
+        ResourceContentsSchema, ToolCallItemSchema, UserMessageDataSchema,
     },
     AgentMessage, AgentMessageData, AgentMessageMeta, AgentTodoList, UserMessageData,
 };
@@ -29,7 +28,6 @@ use crate::{
 // Helper Traits and Functions
 // ============================================================================
 
-/// Helper trait to get icon for ToolKind
 trait ToolKindExt {
     fn icon(&self) -> IconName;
 }
@@ -51,7 +49,6 @@ impl ToolKindExt for ToolKind {
     }
 }
 
-/// Helper trait to get icon for ToolCallStatus
 trait ToolCallStatusExt {
     fn icon(&self) -> IconName;
 }
@@ -68,12 +65,10 @@ impl ToolCallStatusExt for ToolCallStatus {
     }
 }
 
-/// Extract filename from URI
 fn extract_filename(uri: &str) -> String {
     uri.split('/').last().unwrap_or("unknown").to_string()
 }
 
-/// Get icon based on MIME type
 fn get_file_icon(mime_type: &Option<String>) -> IconName {
     if let Some(ref mime) = mime_type {
         if mime.contains("python")
@@ -88,7 +83,6 @@ fn get_file_icon(mime_type: &Option<String>) -> IconName {
     IconName::File
 }
 
-/// Helper to extract text from ToolCallContent
 fn extract_text_from_content(content: &ToolCallContent) -> Option<String> {
     match content {
         ToolCallContent::Content(c) => match &c.content {
@@ -110,7 +104,6 @@ fn extract_text_from_content(content: &ToolCallContent) -> Option<String> {
 // Resource Info Structure
 // ============================================================================
 
-/// Resource information for display
 #[derive(Clone)]
 struct ResourceInfo {
     uri: SharedString,
@@ -149,7 +142,7 @@ impl ResourceInfo {
 }
 
 // ============================================================================
-// Stateful Resource Item (for tracking open/close state)
+// Stateful Resource Item
 // ============================================================================
 
 struct ResourceItemState {
@@ -159,6 +152,7 @@ struct ResourceItemState {
 
 impl ResourceItemState {
     fn new(resource: ResourceInfo) -> Self {
+        tracing::info!("📦 Creating ResourceItemState for: {}", resource.name);
         Self {
             resource,
             open: false,
@@ -167,6 +161,7 @@ impl ResourceItemState {
 
     fn toggle(&mut self, cx: &mut Context<Self>) {
         self.open = !self.open;
+        tracing::info!("🔄 ResourceItem toggle: {} -> {}", self.resource.name, self.open);
         cx.notify();
     }
 }
@@ -185,13 +180,13 @@ impl Render for ResourceItemState {
         let resource_name = self.resource.name.clone();
         let mime_type = self.resource.mime_type.clone();
 
-        // CORRECT PATTERN: Button is inside h_flex, which is a direct child of Collapsible
+        tracing::debug!("🎨 Rendering ResourceItem: {} (open: {})", resource_name, is_open);
+
         Collapsible::new()
             .open(is_open)
             .w_full()
             .gap_2()
             .child(
-                // Header as a single h_flex (direct child of Collapsible)
                 h_flex()
                     .items_center()
                     .gap_2()
@@ -222,7 +217,6 @@ impl Render for ResourceItemState {
                         )
                     })
                     .when(has_content, |this| {
-                        // Toggle button is part of the h_flex
                         this.child(
                             Button::new(SharedString::from(format!("resource-toggle-{}", resource_name)))
                                 .icon(if is_open {
@@ -233,13 +227,13 @@ impl Render for ResourceItemState {
                                 .ghost()
                                 .xsmall()
                                 .on_click(cx.listener(|this, _ev, _window, cx| {
+                                    tracing::info!("🖱️ ResourceItem button clicked: {}", this.resource.name);
                                     this.toggle(cx);
                                 })),
                         )
                     }),
             )
             .when(has_content, |this| {
-                // Content section - only visible when open
                 this.content(
                     div()
                         .w_full()
@@ -262,7 +256,7 @@ impl Render for ResourceItemState {
 }
 
 // ============================================================================
-// Stateful Tool Call Item (for tracking open/close state)
+// Stateful Tool Call Item
 // ============================================================================
 
 struct ToolCallItemState {
@@ -272,11 +266,13 @@ struct ToolCallItemState {
 
 impl ToolCallItemState {
     fn new(tool_call: ToolCall, open: bool) -> Self {
+        tracing::info!("🔧 Creating ToolCallItemState: {} (open: {})", tool_call.title, open);
         Self { tool_call, open }
     }
 
     fn toggle(&mut self, cx: &mut Context<Self>) {
         self.open = !self.open;
+        tracing::info!("🔄 ToolCallItem toggle: {} -> {}", self.tool_call.title, self.open);
         cx.notify();
     }
 
@@ -301,13 +297,13 @@ impl Render for ToolCallItemState {
         let kind_icon = self.tool_call.kind.icon();
         let status_icon = self.tool_call.status.icon();
 
-        // CORRECT PATTERN: Button is inside h_flex, which is a direct child of Collapsible
+        tracing::debug!("🎨 Rendering ToolCallItem: {} (open: {})", title, open);
+
         Collapsible::new()
             .open(open)
             .w_full()
             .gap_2()
             .child(
-                // Header as a single h_flex (direct child of Collapsible)
                 h_flex()
                     .items_center()
                     .gap_3()
@@ -332,7 +328,6 @@ impl Render for ToolCallItemState {
                             .text_color(status_color),
                     )
                     .when(has_content, |this| {
-                        // Toggle button is part of the h_flex
                         this.child(
                             Button::new(SharedString::from(format!(
                                 "tool-call-{}-toggle",
@@ -346,13 +341,13 @@ impl Render for ToolCallItemState {
                             .ghost()
                             .xsmall()
                             .on_click(cx.listener(|this, _ev, _window, cx| {
+                                tracing::info!("🖱️ ToolCallItem button clicked: {}", this.tool_call.title);
                                 this.toggle(cx);
                             })),
                         )
                     }),
             )
             .when(has_content, |this| {
-                // Content section - only visible when open
                 this.content(
                     v_flex()
                         .gap_1()
@@ -373,7 +368,7 @@ impl Render for ToolCallItemState {
 }
 
 // ============================================================================
-// User Message View (with embedded resources)
+// User Message View
 // ============================================================================
 
 struct UserMessageView {
@@ -443,12 +438,23 @@ impl Render for UserMessageView {
 }
 
 // ============================================================================
+// Rendered Item
+// ============================================================================
+
+enum RenderedItem {
+    UserMessage(Entity<UserMessageView>),
+    AgentMessage(String, AgentMessageData),
+    Plan(Plan),
+    ToolCallGroup(Vec<Entity<ToolCallItemState>>),
+}
+
+// ============================================================================
 // Conversation Panel
 // ============================================================================
 
 pub struct ConversationPanel {
     focus_handle: FocusHandle,
-    items: Vec<ConversationItem>,
+    rendered_items: Vec<RenderedItem>,
 }
 
 impl crate::dock_panel::DockPanel for ConversationPanel {
@@ -475,13 +481,47 @@ impl ConversationPanel {
     }
 
     fn new(_: &mut Window, cx: &mut App) -> Self {
+        tracing::info!("🚀 Initializing ConversationPanel");
+
         let json_content = include_str!("fixtures/mock_conversation.json");
         let items: Vec<ConversationItem> =
             serde_json::from_str(json_content).expect("Failed to parse mock conversation");
 
+        let mut rendered_items = Vec::new();
+
+        for item in items.iter() {
+            match item {
+                ConversationItem::UserMessage { id, data } => {
+                    tracing::info!("👤 Creating UserMessage entity: {}", id);
+                    let entity = Self::create_user_message(data.clone(), cx);
+                    rendered_items.push(RenderedItem::UserMessage(entity));
+                }
+                ConversationItem::AgentMessage { id, data } => {
+                    tracing::info!("🤖 Storing AgentMessage data: {}", id);
+                    let agent_data = Self::create_agent_message_data(data.clone());
+                    rendered_items.push(RenderedItem::AgentMessage(id.clone(), agent_data));
+                }
+                ConversationItem::Plan(plan_schema) => {
+                    tracing::info!("📋 Storing Plan data");
+                    let plan = Self::create_plan(plan_schema.clone());
+                    rendered_items.push(RenderedItem::Plan(plan));
+                }
+                ConversationItem::ToolCallGroup { items: tool_items } => {
+                    tracing::info!("🔧 Creating ToolCallGroup with {} items", tool_items.len());
+                    let tool_entities: Vec<Entity<ToolCallItemState>> = tool_items
+                        .iter()
+                        .map(|tool_item| Self::create_tool_call(tool_item.clone(), cx))
+                        .collect();
+                    rendered_items.push(RenderedItem::ToolCallGroup(tool_entities));
+                }
+            }
+        }
+
+        tracing::info!("✅ ConversationPanel initialized with {} items", rendered_items.len());
+
         Self {
             focus_handle: cx.focus_handle(),
-            items,
+            rendered_items,
         }
     }
 
@@ -493,10 +533,9 @@ impl ConversationPanel {
         ElementId::from(("item", hasher.finish()))
     }
 
-    fn map_user_message(
-        id: String,
+    fn create_user_message(
         data: UserMessageDataSchema,
-        cx: &mut Context<Self>,
+        cx: &mut App,
     ) -> Entity<UserMessageView> {
         let mut user_data = UserMessageData::new(data.session_id);
 
@@ -515,6 +554,8 @@ impl ConversationPanel {
                 .map(|resource_info| cx.new(|_| ResourceItemState::new(resource_info)))
                 .collect();
 
+            tracing::info!("  └─ Created {} resource items", resource_items.len());
+
             UserMessageView {
                 data: data_entity,
                 resource_items,
@@ -522,103 +563,9 @@ impl ConversationPanel {
         })
     }
 
-    fn map_content_block(schema: ContentBlockSchema) -> ContentBlock {
-        match schema {
-            ContentBlockSchema::Text(text) => ContentBlock::Text(TextContent::new(text.text)),
-            ContentBlockSchema::Image(image) => {
-                ContentBlock::Image(ImageContent::new(image.data, image.mime_type))
-            }
-            ContentBlockSchema::ResourceLink(link) => {
-                let mut resource_link = ResourceLink::new(link.name, link.uri);
-                if let Some(mime) = link.mime_type {
-                    resource_link = resource_link.mime_type(mime);
-                }
-                ContentBlock::ResourceLink(resource_link)
-            }
-            ContentBlockSchema::Resource(embedded) => {
-                let resource = match embedded.resource {
-                    ResourceContentsSchema::TextResourceContents(text_res) => {
-                        let mut content = TextResourceContents::new(text_res.text, text_res.uri);
-                        if let Some(mime) = text_res.mime_type {
-                            content = content.mime_type(mime);
-                        }
-                        EmbeddedResourceResource::TextResourceContents(content)
-                    }
-                    ResourceContentsSchema::BlobResourceContents(blob_res) => {
-                        let mut content = BlobResourceContents::new(blob_res.blob, blob_res.uri);
-                        if let Some(mime) = blob_res.mime_type {
-                            content = content.mime_type(mime);
-                        }
-                        EmbeddedResourceResource::BlobResourceContents(content)
-                    }
-                };
-                ContentBlock::Resource(EmbeddedResource::new(resource))
-            }
-        }
-    }
-
-    fn map_agent_message(id: String, data: AgentMessageDataSchema) -> AgentMessage {
-        let mut agent_data = AgentMessageData::new(data.session_id);
-
-        if let Some(meta) = data.meta {
-            agent_data.meta = AgentMessageMeta {
-                agent_name: meta.agent_name,
-                is_complete: meta.is_complete,
-            };
-        }
-
-        for chunk_schema in data.chunks {
-            let content_block = Self::map_content_block(chunk_schema.content);
-            let mut content_chunk = ContentChunk::new(content_block);
-            if let Some(meta) = chunk_schema.meta {
-                content_chunk = content_chunk.meta(meta);
-            }
-            agent_data.chunks.push(content_chunk);
-        }
-
-        AgentMessage::new(Self::get_id(&id), agent_data)
-    }
-
-    fn map_plan(plan_schema: PlanSchema) -> AgentTodoList {
-        let plan_entries: Vec<PlanEntry> = plan_schema
-            .entries
-            .into_iter()
-            .map(|e| Self::map_plan_entry(e))
-            .collect();
-
-        let mut plan = Plan::new(plan_entries);
-
-        if let Some(meta) = plan_schema.meta {
-            plan.meta = Some(meta);
-        }
-
-        AgentTodoList::from_plan(plan)
-    }
-
-    fn map_plan_entry(entry: PlanEntrySchema) -> PlanEntry {
-        let priority = match entry.priority.to_lowercase().as_str() {
-            "high" => PlanEntryPriority::High,
-            "medium" => PlanEntryPriority::Medium,
-            "low" => PlanEntryPriority::Low,
-            _ => PlanEntryPriority::Medium,
-        };
-        let status = match entry.status.to_lowercase().as_str() {
-            "pending" => PlanEntryStatus::Pending,
-            "in_progress" => PlanEntryStatus::InProgress,
-            "completed" => PlanEntryStatus::Completed,
-            _ => PlanEntryStatus::Pending,
-        };
-
-        let mut plan_entry = PlanEntry::new(entry.content, priority, status);
-        if let Some(meta) = entry.meta {
-            plan_entry = plan_entry.meta(meta);
-        }
-        plan_entry
-    }
-
-    fn map_tool_call(
+    fn create_tool_call(
         item: ToolCallItemSchema,
-        cx: &mut Context<Self>,
+        cx: &mut App,
     ) -> Entity<ToolCallItemState> {
         let kind = item
             .data
@@ -666,6 +613,100 @@ impl ConversationPanel {
         let is_open = item.open;
         cx.new(|_| ToolCallItemState::new(tool_call, is_open))
     }
+
+    fn map_content_block(schema: ContentBlockSchema) -> ContentBlock {
+        match schema {
+            ContentBlockSchema::Text(text) => ContentBlock::Text(TextContent::new(text.text)),
+            ContentBlockSchema::Image(image) => {
+                ContentBlock::Image(ImageContent::new(image.data, image.mime_type))
+            }
+            ContentBlockSchema::ResourceLink(link) => {
+                let mut resource_link = ResourceLink::new(link.name, link.uri);
+                if let Some(mime) = link.mime_type {
+                    resource_link = resource_link.mime_type(mime);
+                }
+                ContentBlock::ResourceLink(resource_link)
+            }
+            ContentBlockSchema::Resource(embedded) => {
+                let resource = match embedded.resource {
+                    ResourceContentsSchema::TextResourceContents(text_res) => {
+                        let mut content = TextResourceContents::new(text_res.text, text_res.uri);
+                        if let Some(mime) = text_res.mime_type {
+                            content = content.mime_type(mime);
+                        }
+                        EmbeddedResourceResource::TextResourceContents(content)
+                    }
+                    ResourceContentsSchema::BlobResourceContents(blob_res) => {
+                        let mut content = BlobResourceContents::new(blob_res.blob, blob_res.uri);
+                        if let Some(mime) = blob_res.mime_type {
+                            content = content.mime_type(mime);
+                        }
+                        EmbeddedResourceResource::BlobResourceContents(content)
+                    }
+                };
+                ContentBlock::Resource(EmbeddedResource::new(resource))
+            }
+        }
+    }
+
+    fn create_agent_message_data(data: AgentMessageDataSchema) -> AgentMessageData {
+        let mut agent_data = AgentMessageData::new(data.session_id);
+
+        if let Some(meta) = data.meta {
+            agent_data.meta = AgentMessageMeta {
+                agent_name: meta.agent_name,
+                is_complete: meta.is_complete,
+            };
+        }
+
+        for chunk_schema in data.chunks {
+            let content_block = Self::map_content_block(chunk_schema.content);
+            let mut content_chunk = ContentChunk::new(content_block);
+            if let Some(meta) = chunk_schema.meta {
+                content_chunk = content_chunk.meta(meta);
+            }
+            agent_data.chunks.push(content_chunk);
+        }
+
+        agent_data
+    }
+
+    fn create_plan(plan_schema: PlanSchema) -> Plan {
+        let plan_entries: Vec<PlanEntry> = plan_schema
+            .entries
+            .into_iter()
+            .map(|e| Self::map_plan_entry(e))
+            .collect();
+
+        let mut plan = Plan::new(plan_entries);
+
+        if let Some(meta) = plan_schema.meta {
+            plan.meta = Some(meta);
+        }
+
+        plan
+    }
+
+    fn map_plan_entry(entry: PlanEntrySchema) -> PlanEntry {
+        let priority = match entry.priority.to_lowercase().as_str() {
+            "high" => PlanEntryPriority::High,
+            "medium" => PlanEntryPriority::Medium,
+            "low" => PlanEntryPriority::Low,
+            _ => PlanEntryPriority::Medium,
+        };
+        let status = match entry.status.to_lowercase().as_str() {
+            "pending" => PlanEntryStatus::Pending,
+            "in_progress" => PlanEntryStatus::InProgress,
+            "completed" => PlanEntryStatus::Completed,
+            _ => PlanEntryStatus::Pending,
+        };
+
+        let mut plan_entry = PlanEntry::new(entry.content, priority, status);
+        if let Some(meta) = entry.meta {
+            plan_entry = plan_entry.meta(meta);
+        }
+        plan_entry
+    }
 }
 
 impl Focusable for ConversationPanel {
@@ -676,27 +717,27 @@ impl Focusable for ConversationPanel {
 
 impl Render for ConversationPanel {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        tracing::debug!("🎨 Rendering ConversationPanel");
+
         let mut children = v_flex().p_4().gap_6().bg(cx.theme().background);
 
-        for item in &self.items {
+        for item in &self.rendered_items {
             match item {
-                ConversationItem::UserMessage { id, data } => {
-                    let user_msg = Self::map_user_message(id.clone(), data.clone(), cx);
-                    children = children.child(user_msg);
+                RenderedItem::UserMessage(entity) => {
+                    children = children.child(entity.clone());
                 }
-                ConversationItem::AgentMessage { id, data } => {
-                    let agent_msg = Self::map_agent_message(id.clone(), data.clone());
-                    children = children.child(agent_msg);
+                RenderedItem::AgentMessage(id, data) => {
+                    let msg = AgentMessage::new(Self::get_id(id), data.clone());
+                    children = children.child(msg);
                 }
-                ConversationItem::Plan(plan_schema) => {
-                    let todo_list = Self::map_plan(plan_schema.clone());
+                RenderedItem::Plan(plan) => {
+                    let todo_list = AgentTodoList::from_plan(plan.clone());
                     children = children.child(v_flex().pl_6().child(todo_list));
                 }
-                ConversationItem::ToolCallGroup { items } => {
+                RenderedItem::ToolCallGroup(entities) => {
                     let mut group = v_flex().pl_6().gap_2();
-                    for tool_item in items {
-                        let tool_call = Self::map_tool_call(tool_item.clone(), cx);
-                        group = group.child(tool_call);
+                    for entity in entities {
+                        group = group.child(entity.clone());
                     }
                     children = children.child(group);
                 }

@@ -7,7 +7,9 @@
       "Bash(findstr:*)",
       "Bash(cat /Users/shihua/Code/AIAgent/gpui-component/examples/agentx/src/chat_input.rs)",
       "Bash(cp:*)",
-      "Bash(cargo run:*)"
+      "Bash(cargo run:*)",
+      "Bash(RUST_LOG=info cargo run:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []

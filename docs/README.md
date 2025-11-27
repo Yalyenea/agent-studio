@@ -1,180 +1,104 @@
-# Agent Todo List Component
+# AgentX 文档
 
-A generic, reusable todo list component for displaying agent plan execution progress in GPUI applications.
+本目录包含 AgentX 应用开发过程中的技术文档和最佳实践。
 
-## Overview
+## 📚 文档列表
 
-The `AgentTodoList` component follows the Agent Plan specification for tracking complex multi-step tasks. It displays a list of plan entries with their execution status, priority, and completion progress.
+### [Collapsible 组件与 Entity 生命周期管理](./collapsible-entity-lifecycle.md) ⭐ 最新
 
-## Features
+**问题**：Collapsible 展开/折叠按钮无响应
 
-- **Status Tracking**: Visual indicators for pending, in-progress, and completed tasks
-- **Progress Display**: Header shows completion ratio (e.g., "3/3")
-- **Clean UI**: Minimal, icon-based design matching the reference specifications
-- **Flexible**: Both stateless (`AgentTodoList`) and stateful (`AgentTodoListView`) variants
+**涉及技术**：
+- GPUI Entity 生命周期
+- Collapsible 组件使用
+- 状态管理模式
 
-## Components
+**核心要点**：
+- ❌ 不要在 `render()` 中创建 Entity
+- ✅ 在 `new()` 中创建并存储 Entity
+- ✅ 在 `render()` 中只引用已存储的 Entity
 
-### `PlanEntry`
+**适用场景**：
+- 使用 Collapsible 组件
+- 管理多个可交互的子组件
+- 需要持久化组件状态
 
-Represents a single task or goal with:
-- `content`: Human-readable description
-- `priority`: High, Medium, or Low
-- `status`: Pending, InProgress, or Completed
+### [Agent Message 组件文档](./AGENT_MESSAGE.md)
 
-### `AgentTodoList`
+AI 代理消息显示组件的设计和使用说明。
 
-Stateless component that renders immediately. Use when you have static data or manage state elsewhere.
+### [User Message 组件文档](./USER_MESSAGE.md)
 
-### `AgentTodoListView`
+用户消息显示组件的设计和使用说明，包含资源附件处理。
 
-Stateful GPUI view with reactive updates. Use when you need dynamic updates and notifications.
+### [Tool Call Item 组件文档](./TOOL_CALL_ITEM.md)
 
-## Usage
+工具调用项组件的设计和使用说明，支持状态展示和折叠。
 
-### Basic Usage (Stateless)
+---
 
-```rust
-use agentx::{AgentTodoList, PlanEntry, PlanEntryStatus};
+## 🏗️ 项目架构
 
-// In your render function
-AgentTodoList::new()
-    .title("3 to-dos")
-    .entries(vec![
-        PlanEntry::new("Add a ModelDropdown component under dashboard-ui")
-            .with_status(PlanEntryStatus::Completed),
-        PlanEntry::new("Embed it into the tool header")
-            .with_status(PlanEntryStatus::Completed),
-        PlanEntry::new("Close popover automatically after selection")
-            .with_status(PlanEntryStatus::Completed),
-    ])
+AgentX 是一个基于 GPUI 的桌面应用，展示了：
+- Dock 布局系统
+- 多面板管理
+- AI 对话界面
+- 代码编辑器集成
+- 任务列表管理
+
+### 主要目录结构
+
+```
+examples/agentx/
+├── src/
+│   ├── main.rs              # 应用入口
+│   ├── lib.rs               # 核心初始化
+│   ├── conversation.rs      # 会话面板（修复后）
+│   ├── components/          # UI 组件
+│   │   ├── agent_message.rs
+│   │   ├── user_message.rs
+│   │   ├── tool_call_item.rs
+│   │   └── ...
+│   ├── fixtures/            # 模拟数据
+│   └── ...
+├── docs/                    # 📖 技术文档
+│   ├── README.md           # 本文件
+│   ├── collapsible-entity-lifecycle.md  # ⭐ Entity 生命周期管理
+│   ├── AGENT_MESSAGE.md    # Agent 消息组件
+│   ├── USER_MESSAGE.md     # 用户消息组件
+│   └── TOOL_CALL_ITEM.md   # 工具调用组件
+└── ...
 ```
 
-### Stateful Usage (Reactive)
+## 🔗 相关资源
 
-```rust
-use agentx::{AgentTodoListView, PlanEntry, PlanEntryStatus, PlanEntryPriority};
+- [GPUI 官方文档](https://www.gpui.rs/)
+- [gpui-component 组件库](../../crates/ui/)
+- [CollapsibleStory 参考实现](../src/collapsible_story.rs)
 
-// Create the view
-let todo_list = AgentTodoListView::new(window, cx);
+## 💡 贡献指南
 
-// Update entries dynamically
-todo_list.update(cx, |list, cx| {
-    list.add_entry(
-        PlanEntry::new("Analyze the existing codebase structure")
-            .with_priority(PlanEntryPriority::High)
-            .with_status(PlanEntryStatus::Pending),
-        cx
-    );
-});
+如果你发现了新的技术问题或最佳实践，欢迎添加文档到此目录：
 
-// Update task status
-todo_list.update(cx, |list, cx| {
-    list.update_status(0, PlanEntryStatus::InProgress, cx);
-});
+1. 创建 `your-topic.md` 文件
+2. 使用清晰的标题和代码示例
+3. 更新本 README 添加索引
+4. 包含问题、原因、解决方案三部分
 
-// Render in your view
-todo_list.clone()
+## 📝 文档模板
+
+```markdown
+# 标题
+
+## 问题概述
+描述问题症状...
+
+## 根本原因
+解释为什么会出现这个问题...
+
+## 解决方案
+提供正确的代码示例...
+
+## 最佳实践
+总结要点...
 ```
-
-## Status Icons
-
-- **Pending** (Dash icon): Task not yet started
-- **InProgress** (LoaderCircle icon): Currently executing
-- **Completed** (CircleCheck icon): Successfully finished
-
-## API Reference
-
-### PlanEntry
-
-```rust
-// Create a new entry
-PlanEntry::new("Task description")
-
-// With priority
-.with_priority(PlanEntryPriority::High)
-
-// With status
-.with_status(PlanEntryStatus::InProgress)
-```
-
-### AgentTodoList
-
-```rust
-// Create stateless component
-AgentTodoList::new()
-    .title("Task List")
-    .entries(vec![...])
-    .entry(single_entry)  // Add individual entry
-```
-
-### AgentTodoListView
-
-```rust
-// Create new view
-AgentTodoListView::new(window, cx)
-
-// Create with initial entries
-AgentTodoListView::with_entries(entries, window, cx)
-
-// Update methods
-.set_entries(entries, cx)
-.add_entry(entry, cx)
-.update_entry(index, entry, cx)
-.update_status(index, status, cx)
-.set_title(title, cx)
-```
-
-## Integration with Agent Plan Protocol
-
-This component is designed to work with the JSON-RPC Agent Plan protocol:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "method": "session/update",
-  "params": {
-    "sessionId": "sess_abc123def456",
-    "update": {
-      "sessionUpdate": "plan",
-      "entries": [
-        {
-          "content": "Analyze the existing codebase structure",
-          "priority": "high",
-          "status": "pending"
-        }
-      ]
-    }
-  }
-}
-```
-
-You can easily convert protocol messages to `PlanEntry` objects:
-
-```rust
-fn from_protocol(entry: ProtocolPlanEntry) -> PlanEntry {
-    PlanEntry::new(entry.content)
-        .with_priority(match entry.priority.as_str() {
-            "high" => PlanEntryPriority::High,
-            "low" => PlanEntryPriority::Low,
-            _ => PlanEntryPriority::Medium,
-        })
-        .with_status(match entry.status.as_str() {
-            "in_progress" => PlanEntryStatus::InProgress,
-            "completed" => PlanEntryStatus::Completed,
-            _ => PlanEntryStatus::Pending,
-        })
-}
-```
-
-## Styling
-
-The component automatically uses your application's active theme:
-- Colors adapt to the current theme (foreground, muted, accent, green)
-- Font sizes: 14px for title and tasks
-- Spacing: Consistent gaps and padding
-- Icons: 16px size for clear visibility
-
-## Agent Studio: Task Panel
-
-See the reference implementation in the codebase for a complete Agent Studio of integrating the todo list into a panel.
