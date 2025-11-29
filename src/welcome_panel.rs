@@ -148,6 +148,7 @@ impl WelcomePanel {
                 .placeholder("Describe what you'd like to build...")
         });
 
+
         let context_list =
             cx.new(|cx| ListState::new(ContextListDelegate::new(), window, cx).searchable(true));
 
@@ -220,47 +221,39 @@ impl WelcomePanel {
         cx.notify();
     }
 
-    /// Send message to the selected agent
-    fn send_message(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        // Get the selected agent name
-        let agent_name = self.agent_select.read(cx).selected_value().cloned();
+    /// Handles sending the task based on the current input, mode, and agent selections.
+    fn handle_send_task(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let task_name = self.input_state.read(cx).text().to_string();
 
-        let agent_name = match agent_name {
-            Some(name) if name != "No agents" => name,
-            _ => {
-                eprintln!("No agent selected");
-                return;
-            }
-        };
+        if !task_name.is_empty() {
+            let mode = self.mode_select
+                .read(cx)
+                .selected_value()
+                .cloned()
+                .unwrap_or("Auto")
+                .to_string();
 
-        // Get the input text
-        let input_text = self.input_state.read(cx).value().to_string();
-        if input_text.trim().is_empty() {
-            return;
+            let agent_name = self.agent_select
+                .read(cx)
+                .selected_value()
+                .cloned()
+                .unwrap_or_else(|| "test-agent".to_string());
+
+            let agent_name = if agent_name == "No agents" {
+                "test-agent".to_string()
+            } else {
+                agent_name
+            };
+
+            // Dispatch CreateTaskFromWelcome action
+            let action = CreateTaskFromWelcome {
+                task_input: task_name.clone(),
+                agent_name,
+                mode,
+            };
+
+            window.dispatch_action(Box::new(action), cx);
         }
-
-        // Get the selected mode
-        let mode = self
-            .mode_select
-            .read(cx)
-            .selected_value()
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| "Auto".to_string());
-
-        // Clear the input immediately
-        self.input_state.update(cx, |state, cx| {
-            state.set_value("", window, cx);
-        });
-
-        // Dispatch CreateTaskFromWelcome action
-        let action = CreateTaskFromWelcome {
-            task_input: input_text,
-            agent_name,
-            mode,
-        };
-
-        cx.dispatch_action(&action);
-        log::info!("Dispatched CreateTaskFromWelcome action");
     }
 }
 
@@ -272,6 +265,8 @@ impl Focusable for WelcomePanel {
 
 impl Render for WelcomePanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+
+
         v_flex()
             .size_full()
             .items_center()
@@ -304,7 +299,7 @@ impl Render for WelcomePanel {
                             ),
                     )
                     .child(
-                        // Chat input with title, context, mode, agent selectors and send handler
+                        // Chat input with title and send handler
                         ChatInputBox::new("welcome-chat-input", self.input_state.clone())
                             // .title("New Task")
                             .context_list(self.context_list.clone(), cx)
@@ -313,11 +308,11 @@ impl Render for WelcomePanel {
                                 this.context_popover_open = *open;
                                 cx.notify();
                             }))
-                            .on_send(cx.listener(|this, _, window, cx| {
-                                this.send_message(window, cx);
-                            }))
                             .mode_select(self.mode_select.clone())
-                            .agent_select(self.agent_select.clone()),
+                            .agent_select(self.agent_select.clone())
+                            .on_send(cx.listener(|this, _, window, cx| {
+                                this.handle_send_task(window, cx);
+                            })),
                     ),
             )
     }
