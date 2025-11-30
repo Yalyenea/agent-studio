@@ -19,6 +19,7 @@ use crate::app::actions::{AddSessionToList, SelectedAgentTask};
 use crate::components::TaskListItem;
 use crate::task_data::{load_mock_tasks, random_status};
 use crate::task_schema::{AgentTask, TaskStatus};
+use crate::utils;
 use crate::{AppState, CreateTaskFromWelcome, ShowConversationPanel, ShowWelcomePanel};
 
 struct TaskListDelegate {
@@ -695,19 +696,10 @@ impl Render for ListTaskPanel {
 
                                                     // Then spawn the folder picker
                                                     cx.spawn(async move |_cx| {
-                                                        let folder = rfd::AsyncFileDialog::new()
-                                                            .set_title("Select Project Folder")
-                                                            .pick_folder()
-                                                            .await;
-
-                                                        if let Some(folder) = folder {
-                                                            let path = folder.path();
-                                                            println!("Selected folder: {}", path.display());
-                                                            log::info!("Selected project folder: {}", path.display());
-                                                        } else {
-                                                            println!("No folder selected");
-                                                            log::info!("Folder selection cancelled");
-                                                        }
+                                                        utils::pick_and_log_folder(
+                                                            "Select Project Folder",
+                                                            "Task List"
+                                                        ).await;
                                                     })
                                                     .detach();
                                                 }

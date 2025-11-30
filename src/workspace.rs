@@ -13,7 +13,7 @@ use std::{sync::Arc, time::Duration};
 use agent_client_protocol as acp;
 
 use crate::{
-    AddPanel, AddSessionPanel, AddSessionToList, AppState, AppTitleBar, ChatInputPanel, CodeEditorPanel, ConversationPanelAcp, CreateTaskFromWelcome, ListTaskPanel, ShowConversationPanel, ShowWelcomePanel, ToggleDockToggleButton, TogglePanelVisible, WelcomePanel, dock_panel::DockPanelContainer
+    AddPanel, AddSessionPanel, AddSessionToList, AppState, AppTitleBar, ChatInputPanel, CodeEditorPanel, ConversationPanelAcp, CreateTaskFromWelcome, ListTaskPanel, ShowConversationPanel, ShowWelcomePanel, ToggleDockToggleButton, TogglePanelVisible, WelcomePanel, dock_panel::DockPanelContainer, utils
 };
 
 
@@ -433,19 +433,7 @@ impl DockWorkspace {
         cx: &mut Context<Self>,
     ) {
         cx.spawn(async move |_this, _cx| {
-            let folder = rfd::AsyncFileDialog::new()
-                .set_title("Open Project Folder")
-                .pick_folder()
-                .await;
-
-            if let Some(folder) = folder {
-                let path = folder.path();
-                println!("Menu Open - Selected folder: {}", path.display());
-                log::info!("Menu Open - Selected project folder: {}", path.display());
-            } else {
-                println!("Menu Open - No folder selected");
-                log::info!("Menu Open - Folder selection cancelled");
-            }
+            utils::pick_and_log_folder("Open Project Folder", "Menu").await;
         })
         .detach();
     }

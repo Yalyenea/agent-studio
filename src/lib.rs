@@ -14,6 +14,7 @@ mod settings_window;
 mod task_data;
 mod task_list;
 mod task_turn_view;
+mod utils;
 mod welcome_panel;
 pub mod workspace;
 
