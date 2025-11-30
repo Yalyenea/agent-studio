@@ -10,7 +10,12 @@
       "Bash(cargo run:*)",
       "Bash(RUST_LOG=info cargo run:*)",
       "Bash(cat:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(rustc:*)",
+      "Bash(RUST_LOG=info cargo build:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo doc:*)",
+      "Bash(timeout 8 cargo run:*)"
     ],
     "deny": [],
     "ask": []

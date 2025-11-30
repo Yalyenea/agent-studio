@@ -16,6 +16,9 @@ mod task_turn_view;
 mod welcome_panel;
 pub mod workspace;
 
+#[cfg(test)]
+mod test_mock_data;
+
 use crate::dock_panel::{DockPanel, DockPanelContainer, DockPanelState};
 pub use app::app_state::AppState;
 pub use app::{

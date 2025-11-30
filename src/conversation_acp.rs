@@ -256,6 +256,29 @@ impl ToolCallItemState {
     fn has_content(&self) -> bool {
         !self.tool_call.content.is_empty()
     }
+
+    /// Update this tool call with fields from a ToolCallUpdate
+    fn apply_update(&mut self, update_fields: agent_client_protocol_schema::ToolCallUpdateFields, cx: &mut Context<Self>) {
+        // Use the built-in update method from ToolCall
+        self.tool_call.update(update_fields);
+
+        // Auto-open when tool call completes or fails (so user can see result)
+        match self.tool_call.status {
+            ToolCallStatus::Completed | ToolCallStatus::Failed => {
+                if self.has_content() {
+                    self.open = true;
+                }
+            }
+            _ => {}
+        }
+
+        cx.notify();
+    }
+
+    /// Get the tool call ID for matching updates
+    fn tool_call_id(&self) -> &agent_client_protocol_schema::ToolCallId {
+        &self.tool_call.tool_call_id
+    }
 }
 
 impl Render for ToolCallItemState {
@@ -444,9 +467,8 @@ enum RenderedItem {
     AgentThought(String),
     Plan(Plan),
     ToolCall(Entity<ToolCallItemState>),
-    ToolCallUpdate(String),
-    CommandsUpdate(String),
-    ModeUpdate(String),
+    // Simple text updates for commands and mode changes
+    InfoUpdate(String),
 }
 
 /// Conversation panel that displays SessionUpdate messages from ACP
@@ -616,27 +638,77 @@ impl ConversationPanelAcp {
                 items.push(RenderedItem::ToolCall(entity));
             }
             SessionUpdate::ToolCallUpdate(tool_call_update) => {
-                items.push(RenderedItem::ToolCallUpdate(format!(
-                    "Tool Call Update: {}",
-                    tool_call_update.tool_call_id
-                )));
+                // Find the existing ToolCall entity by ID and update it
+                let mut found = false;
+                for item in items.iter_mut() {
+                    if let RenderedItem::ToolCall(entity) = item {
+                        let entity_clone = entity.clone();
+                        let matches = entity_clone.read(cx).tool_call_id() == &tool_call_update.tool_call_id;
+
+                        if matches {
+                            // Update the existing tool call
+                            entity.update(cx, |state, cx| {
+                                log::info!(
+                                    "Updating ToolCall {} with new status: {:?}",
+                                    tool_call_update.tool_call_id,
+                                    tool_call_update.fields.status
+                                );
+                                state.apply_update(tool_call_update.fields.clone(), cx);
+                            });
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+
+                // If no existing ToolCall found, try to create one from the update
+                if !found {
+                    log::warn!(
+                        "ToolCallUpdate received for non-existent ToolCall ID: {}. Attempting to create new ToolCall.",
+                        tool_call_update.tool_call_id
+                    );
+
+                    // Try to convert ToolCallUpdate to ToolCall
+                    match agent_client_protocol_schema::ToolCall::try_from(tool_call_update) {
+                        Ok(tool_call) => {
+                            let entity = cx.new(|_| ToolCallItemState::new(tool_call, false));
+                            items.push(RenderedItem::ToolCall(entity));
+                        }
+                        Err(e) => {
+                            log::error!(
+                                "Failed to create ToolCall from ToolCallUpdate: {:?}",
+                                e
+                            );
+                        }
+                    }
+                }
             }
             SessionUpdate::Plan(plan) => {
                 items.push(RenderedItem::Plan(plan));
             }
             SessionUpdate::AvailableCommandsUpdate(commands_update) => {
-                items.push(RenderedItem::CommandsUpdate(format!(
-                    "Available Commands: {} commands",
+                log::info!(
+                    "Available commands updated: {} commands available",
+                    commands_update.available_commands.len()
+                );
+                items.push(RenderedItem::InfoUpdate(format!(
+                    "📋 Available Commands: {} commands",
                     commands_update.available_commands.len()
                 )));
             }
             SessionUpdate::CurrentModeUpdate(mode_update) => {
-                items.push(RenderedItem::ModeUpdate(format!(
-                    "Mode Update: {}",
+                log::info!("Mode updated to: {}", mode_update.current_mode_id);
+                items.push(RenderedItem::InfoUpdate(format!(
+                    "🔄 Mode: {}",
                     mode_update.current_mode_id
                 )));
             }
-            _ => {}
+            _ => {
+                log::warn!(
+                    "Unhandled SessionUpdate variant: {:?}",
+                    std::mem::discriminant(&update)
+                );
+            }
         }
     }
 
@@ -644,9 +716,12 @@ impl ConversationPanelAcp {
     fn load_mock_data() -> Vec<SessionUpdate> {
         let json_str = include_str!("../mock_conversation_acp.json");
         match serde_json::from_str::<Vec<SessionUpdate>>(json_str) {
-            Ok(updates) => updates,
+            Ok(updates) => {
+                log::info!("✅ Successfully loaded {} mock conversation updates", updates.len());
+                updates
+            },
             Err(e) => {
-                eprintln!("Failed to load mock conversation data: {}", e);
+                log::error!("❌ Failed to load mock conversation data: {}", e);
                 Vec::new()
             }
         }
@@ -809,15 +884,15 @@ impl Render for ConversationPanelAcp {
                 RenderedItem::ToolCall(entity) => {
                     children = children.child(v_flex().pl_6().child(entity.clone()));
                 }
-                RenderedItem::ToolCallUpdate(text)
-                | RenderedItem::CommandsUpdate(text)
-                | RenderedItem::ModeUpdate(text) => {
+                RenderedItem::InfoUpdate(text) => {
                     children = children.child(
                         div().pl_6().child(
                             div()
                                 .p_2()
                                 .rounded(cx.theme().radius)
                                 .bg(cx.theme().muted.opacity(0.5))
+                                .border_1()
+                                .border_color(cx.theme().border.opacity(0.3))
                                 .child(
                                     div()
                                         .text_xs()
