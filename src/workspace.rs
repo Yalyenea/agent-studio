@@ -425,6 +425,31 @@ impl DockWorkspace {
         });
     }
 
+    /// Handle Open action - open folder picker and print selected path
+    fn on_action_open(
+        &mut self,
+        _: &crate::Open,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        cx.spawn(async move |_this, _cx| {
+            let folder = rfd::AsyncFileDialog::new()
+                .set_title("Open Project Folder")
+                .pick_folder()
+                .await;
+
+            if let Some(folder) = folder {
+                let path = folder.path();
+                println!("Menu Open - Selected folder: {}", path.display());
+                log::info!("Menu Open - Selected project folder: {}", path.display());
+            } else {
+                println!("Menu Open - No folder selected");
+                log::info!("Menu Open - Folder selection cancelled");
+            }
+        })
+        .detach();
+    }
+
     /// Helper method to create and show ConversationPanelAcp in the center
     fn show_conversation_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let conversation_panel = DockPanelContainer::panel::<ConversationPanelAcp>(window, cx);
@@ -590,6 +615,7 @@ impl Render for DockWorkspace {
             .on_action(cx.listener(Self::on_action_show_welcome_panel))
             .on_action(cx.listener(Self::on_action_show_conversation_panel))
             .on_action(cx.listener(Self::on_action_create_task_from_welcome))
+            .on_action(cx.listener(Self::on_action_open))
             .relative()
             .size_full()
             .flex()
