@@ -767,6 +767,6 @@ impl Render for ConversationPanel {
             }
         }
 
-        children.scrollable(ScrollbarAxis::Vertical).size_full()
+        children.size_full()
     }
 }

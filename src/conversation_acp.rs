@@ -464,7 +464,9 @@ impl Render for UserMessageView {
 
 enum RenderedItem {
     UserMessage(Entity<UserMessageView>),
+    /// Agent message with unique ID and mutable data (supports chunk merging)
     AgentMessage(String, AgentMessageData),
+    /// Agent thought with mutable text (supports chunk merging)
     AgentThought(String),
     Plan(Plan),
     ToolCall(Entity<ToolCallItemState>),
@@ -472,6 +474,28 @@ enum RenderedItem {
     InfoUpdate(String),
     // Permission request
     PermissionRequest(Entity<PermissionRequestView>),
+}
+
+impl RenderedItem {
+    /// Try to append an AgentMessageChunk to this item (returns true if successful)
+    fn try_append_agent_message_chunk(&mut self, chunk: ContentChunk) -> bool {
+        if let RenderedItem::AgentMessage(_id, ref mut data) = self {
+            data.chunks.push(chunk);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Try to append an AgentThoughtChunk to this item (returns true if successful)
+    fn try_append_agent_thought_chunk(&mut self, text: String) -> bool {
+        if let RenderedItem::AgentThought(ref mut existing_text) = self {
+            existing_text.push_str(&text);
+            true
+        } else {
+            false
+        }
+    }
 }
 
 /// Conversation panel that displays SessionUpdate messages from ACP
@@ -749,17 +773,38 @@ impl ConversationPanelAcp {
                 items.push(Self::create_user_message(chunk, index, cx));
             }
             SessionUpdate::AgentMessageChunk(chunk) => {
-                log::debug!("  └─ Creating AgentMessage");
-                let data = Self::create_agent_message_data(chunk, index);
-                items.push(RenderedItem::AgentMessage(
-                    format!("agent-msg-{}", index),
-                    data,
-                ));
+                // Try to merge with the last AgentMessage item
+                let merged = items
+                    .last_mut()
+                    .map(|last_item| last_item.try_append_agent_message_chunk(chunk.clone()))
+                    .unwrap_or(false);
+
+                if merged {
+                    log::debug!("  └─ Merged AgentMessageChunk into existing message");
+                } else {
+                    log::debug!("  └─ Creating new AgentMessage");
+                    let data = Self::create_agent_message_data(chunk, index);
+                    items.push(RenderedItem::AgentMessage(
+                        format!("agent-msg-{}", index),
+                        data,
+                    ));
+                }
             }
             SessionUpdate::AgentThoughtChunk(chunk) => {
-                log::debug!("  └─ Creating AgentThought");
                 let text = Self::extract_text_from_content(&chunk.content);
-                items.push(RenderedItem::AgentThought(text));
+
+                // Try to merge with the last AgentThought item
+                let merged = items
+                    .last_mut()
+                    .map(|last_item| last_item.try_append_agent_thought_chunk(text.clone()))
+                    .unwrap_or(false);
+
+                if merged {
+                    log::debug!("  └─ Merged AgentThoughtChunk into existing thought");
+                } else {
+                    log::debug!("  └─ Creating new AgentThought");
+                    items.push(RenderedItem::AgentThought(text));
+                }
             }
             SessionUpdate::ToolCall(tool_call) => {
                 log::debug!("  └─ Creating ToolCall: {}", tool_call.tool_call_id);
