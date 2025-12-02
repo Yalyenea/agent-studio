@@ -216,7 +216,7 @@ pub fn init(cx: &mut App) {
         };
 
         let view = cx.new(|cx| {
-            let (title, description, closable, zoomable, story, on_active) =
+            let (title, description, closable, zoomable, story, on_active, paddings) =
                 create_panel_view(&story_state.story_klass, window, cx);
 
             let mut container = DockPanelContainer::new(cx)
@@ -236,6 +236,7 @@ pub fn init(cx: &mut App) {
             container.description = description.into();
             container.closable = closable;
             container.zoomable = zoomable;
+            container.paddings = paddings;
             container
         });
         Box::new(view)
@@ -255,6 +256,7 @@ fn create_panel_view(
     Option<PanelControl>,
     AnyView,
     fn(AnyView, bool, &mut Window, &mut App),
+    Pixels,
 ) {
     macro_rules! story {
         ($klass:tt) => {
@@ -265,6 +267,7 @@ fn create_panel_view(
                 $klass::zoomable(),
                 $klass::view(window, cx).into(),
                 $klass::on_active_any,
+                $klass::paddings(),
             )
         };
     }
