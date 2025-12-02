@@ -101,6 +101,8 @@ pub struct WelcomePanel {
     session_select: Entity<SelectState<Vec<String>>>,
     current_session_id: Option<String>,
     has_agents: bool,
+    has_workspace: bool,
+    active_workspace_name: Option<String>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -155,7 +157,36 @@ impl WelcomePanel {
             this._subscriptions.push(session_select_sub);
         });
 
+        // Load workspace info
+        Self::load_workspace_info(&entity, cx);
+
         entity
+    }
+
+    /// Load workspace info from WorkspaceService
+    fn load_workspace_info(entity: &Entity<Self>, cx: &mut App) {
+        let workspace_service = match AppState::global(cx).workspace_service() {
+            Some(service) => service.clone(),
+            None => return,
+        };
+
+        let weak_entity = entity.downgrade();
+        cx.spawn(async move |cx| {
+            // Get active workspace
+            let active_workspace = workspace_service.get_active_workspace().await;
+
+            // Update UI
+            _ = cx.update(|cx| {
+                if let Some(entity) = weak_entity.upgrade() {
+                    entity.update(cx, |this, cx| {
+                        this.has_workspace = active_workspace.is_some();
+                        this.active_workspace_name = active_workspace.map(|ws| ws.name);
+                        cx.notify();
+                    });
+                }
+            });
+        })
+        .detach();
     }
 
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -219,6 +250,8 @@ impl WelcomePanel {
             session_select,
             current_session_id: None,
             has_agents,
+            has_workspace: false,
+            active_workspace_name: None,
             _subscriptions: Vec::new(),
         };
 
@@ -422,6 +455,13 @@ impl WelcomePanel {
 
     /// Handles sending the task based on the current input, mode, and agent selections.
     fn handle_send_task(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // Check if workspace exists
+        if !self.has_workspace {
+            log::warn!("[WelcomePanel] Cannot create task: No workspace available");
+            // TODO: Show user-facing notification/toast
+            return;
+        }
+
         let task_name = self.input_state.read(cx).text().to_string();
 
         if !task_name.is_empty() {
@@ -499,7 +539,17 @@ impl Render for WelcomePanel {
                                 gpui::div()
                                     .text_base()
                                     .text_color(cx.theme().muted_foreground)
-                                    .child("Start by describing what you'd like to build"),
+                                    .child(
+                                        if self.has_workspace {
+                                            if let Some(workspace_name) = &self.active_workspace_name {
+                                                format!("Current workspace: {} - Start by describing what you'd like to build", workspace_name)
+                                            } else {
+                                                "Start by describing what you'd like to build".to_string()
+                                            }
+                                        } else {
+                                            "Please add a workspace first by clicking 'Add repository' in the left panel".to_string()
+                                        }
+                                    ),
                             ),
                     )
                     .child(

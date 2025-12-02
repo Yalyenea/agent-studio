@@ -15,8 +15,7 @@ use gpui_component::{
 use agent_client_protocol_schema::{ContentBlock, SessionUpdate};
 
 use crate::app::actions::{AddSessionToList, SelectedAgentTask};
-use crate::task_schema::{AgentTask, TaskStatus};
-use crate::utils;
+use crate::schemas::workspace_schema::WorkspaceTask;
 use crate::{AppState, CreateTaskFromWelcome, ShowConversationPanel, ShowWelcomePanel};
 
 use super::types::TaskListDelegate;
@@ -24,7 +23,7 @@ use super::types::TaskListDelegate;
 pub struct ListTaskPanel {
     focus_handle: FocusHandle,
     task_list: Entity<ListState<TaskListDelegate>>,
-    selected_agent_task: Option<Rc<AgentTask>>,
+    selected_task: Option<Rc<WorkspaceTask>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -34,12 +33,13 @@ impl crate::panels::dock_panel::DockPanel for ListTaskPanel {
     }
 
     fn description() -> &'static str {
-        "A list displays a series of items."
+        "Project-based task list"
     }
 
     fn new_view(window: &mut Window, cx: &mut App) -> Entity<impl Render> {
         Self::view(window, cx)
     }
+
     fn paddings() -> Pixels {
         px(12.)
     }
@@ -52,12 +52,17 @@ impl ListTaskPanel {
         // Subscribe to session bus for all session updates
         Self::subscribe_to_session_updates(&entity, cx);
 
+        // Load initial workspace data
+        Self::load_workspace_data(&entity, cx);
+
+        // Start periodic refresh (every 2 seconds) to pick up new tasks
+        Self::start_periodic_refresh(&entity, cx);
+
         entity
     }
 
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let mut delegate = TaskListDelegate::new();
-        delegate.load_all_tasks();
+        let delegate = TaskListDelegate::new();
 
         let task_list = AppContext::new(cx, |cx| {
             ListState::new(delegate, window, cx).searchable(true)
@@ -73,12 +78,12 @@ impl ListTaskPanel {
             window,
             |_this, _, ev: &ListEvent, window, cx| match ev {
                 ListEvent::Select(ix) => {
-                    println!("List Selected: {:?}", ix);
+                    println!("Task Selected: {:?}", ix);
                     // Single click - show conversation panel
                     window.dispatch_action(Box::new(ShowConversationPanel), cx);
                 }
                 ListEvent::Confirm(ix) => {
-                    println!("List Confirmed: {:?}", ix);
+                    println!("Task Confirmed: {:?}", ix);
                     // Enter key - show conversation panel
                     window.dispatch_action(Box::new(ShowConversationPanel), cx);
                 }
@@ -88,34 +93,45 @@ impl ListTaskPanel {
             },
         )];
 
-        // Spawn a background task to randomly update task status for demo
-        cx.spawn(async move |this, cx| {
-            this.update(cx, |this, cx| {
-                this.task_list.update(cx, |picker, _| {
-                    picker
-                        .delegate_mut()
-                        ._agent_tasks
-                        .iter_mut()
-                        .for_each(|agent_task| {
-                            // Clone the task and update its status
-                            let mut updated_task = (**agent_task).clone();
-                            updated_task.status = crate::task_data::random_status();
-                            *agent_task = Rc::new(updated_task.prepare());
-                        });
-                    picker.delegate_mut().prepare("");
-                });
-                cx.notify();
-            })
-            .ok();
-        })
-        .detach();
-
         Self {
             focus_handle: cx.focus_handle(),
             task_list,
-            selected_agent_task: None,
+            selected_task: None,
             _subscriptions,
         }
+    }
+
+    /// Load workspace data from WorkspaceService
+    fn load_workspace_data(entity: &Entity<Self>, cx: &mut App) {
+        let workspace_service = match AppState::global(cx).workspace_service() {
+            Some(service) => service.clone(),
+            None => {
+                log::warn!("WorkspaceService not initialized");
+                return;
+            }
+        };
+
+        let weak_entity = entity.downgrade();
+        cx.spawn(async move |cx| {
+            // Load workspaces and tasks
+            let workspaces = workspace_service.list_workspaces().await;
+            let all_tasks = workspace_service.get_all_tasks().await;
+
+            log::info!("Loaded {} workspaces and {} tasks", workspaces.len(), all_tasks.len());
+
+            // Update the UI
+            _ = cx.update(|cx| {
+                if let Some(entity) = weak_entity.upgrade() {
+                    entity.update(cx, |this, cx| {
+                        this.task_list.update(cx, |list, cx| {
+                            list.delegate_mut().load_from_service(workspaces, all_tasks);
+                            cx.notify();
+                        });
+                    });
+                }
+            });
+        })
+        .detach();
     }
 
     /// Subscribe to session bus to update task subtitles with message previews
@@ -159,47 +175,34 @@ impl ListTaskPanel {
         // Extract text from the update
         let text = match &update {
             SessionUpdate::UserMessageChunk(chunk) => {
-                log::debug!("User message chunk: {:?}", chunk);
+                log::debug!("User message chunk for session {}", session_id);
                 Self::extract_text_from_content(&chunk.content)
             }
             SessionUpdate::AgentMessageChunk(chunk) => {
-                log::debug!("Agent message chunk: {:?}", chunk);
+                log::debug!("Agent message chunk for session {}", session_id);
                 Self::extract_text_from_content(&chunk.content)
             }
             _ => {
-                log::debug!("Ignoring session update: {:?}", update);
+                log::debug!("Ignoring session update type");
                 return;
-            } // Ignore other update types
+            }
         };
 
         if text.is_empty() {
             return;
         }
 
+        // Truncate text to ~50 characters for preview
+        let preview = if text.len() > 50 {
+            format!("{}...", &text[..50])
+        } else {
+            text.clone()
+        };
+
         // Update the task with matching session_id
         self.task_list.update(cx, |list, cx| {
             let delegate = list.delegate_mut();
-            let mut found = false;
-
-            // Find and update the task
-            for task in delegate._agent_tasks.iter_mut() {
-                if task.session_id.as_ref() == Some(&session_id) {
-                    let mut updated_task = (**task).clone();
-                    // Truncate text to ~50 characters for subtitle
-                    let preview = if text.len() > 50 {
-                        format!("{}...", &text[..50])
-                    } else {
-                        text.clone()
-                    };
-                    updated_task.update_subtitle(preview);
-                    *task = Rc::new(updated_task);
-                    found = true;
-                    break;
-                }
-            }
-
-            if found {
-                delegate.prepare("");
+            if delegate.update_task_message(&session_id, preview) {
                 cx.notify();
                 log::debug!("Updated task subtitle for session: {}", session_id);
             }
@@ -221,44 +224,38 @@ impl ListTaskPanel {
         cx: &mut Context<Self>,
     ) {
         let picker = self.task_list.read(cx);
-        if let Some(agent_task) = picker.delegate().selected_agent_task() {
-            log::debug!("Selected agent task: {:?}", &agent_task.name);
-            self.selected_agent_task = Some(agent_task);
+        if let Some(task) = picker.delegate().selected_task() {
+            log::debug!("Selected task: {:?}", &task.name);
+            self.selected_task = Some(task);
         }
     }
 
     /// Handle action to create a new task from the welcome panel
+    /// Note: Task creation is handled by workspace/actions.rs
+    /// This handler waits a bit and then reloads the data to display the newly created task
     fn on_create_task_from_welcome(
         &mut self,
-        action: &CreateTaskFromWelcome,
+        _action: &CreateTaskFromWelcome,
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let task_name = action.task_input.clone();
-        log::debug!("Creating new task from welcome: {:?}", action);
-        // Create a new task with InProgress status
-        let new_task = AgentTask {
-            name: task_name,
-            task_type: "Conversation".to_string(),
-            add_new_code_lines: 0,
-            delete_code_lines: 0,
-            status: TaskStatus::InProgress,
-            session_id: None,
-            subtitle: None,
-            change_timestamp: 0,
-            change_timestamp_str: "".into(),
-            add_new_code_lines_str: "+0".into(),
-            delete_code_lines_str: "-0".into(),
-        }
-        .prepare();
+        log::debug!("[ListTaskPanel] Scheduling workspace data reload after task creation");
 
-        // Add task to the beginning of the list
-        self.task_list.update(cx, |list, cx| {
-            let delegate = list.delegate_mut();
-            delegate._agent_tasks.insert(0, Rc::new(new_task));
-            delegate.prepare("");
-            cx.notify();
-        });
+        // Wait for the task to be created (workspace/actions.rs is async)
+        // then reload workspace data to show the newly created task
+        let entity = cx.entity().downgrade();
+        cx.spawn(async move |_this, cx| {
+            // Wait 500ms for the task creation to complete
+            smol::Timer::after(std::time::Duration::from_millis(500)).await;
+
+            // Reload workspace data
+            _ = cx.update(|cx| {
+                if let Some(this) = entity.upgrade() {
+                    Self::load_workspace_data(&this, cx);
+                }
+            });
+        })
+        .detach();
     }
 
     /// Handle action to add a new session to the list
@@ -274,21 +271,9 @@ impl ListTaskPanel {
             action.task_name
         );
 
-        let task_name = action.task_name.clone();
-        let session_id = action.session_id.clone();
-
-        // Create a new task for this session
-        let new_task = AgentTask::new_for_session(task_name, session_id.clone());
-
-        // Add task to the beginning of the list in the "Default" section
-        self.task_list.update(cx, |list, cx| {
-            let delegate = list.delegate_mut();
-            delegate._agent_tasks.insert(0, Rc::new(new_task));
-            delegate.prepare("");
-            cx.notify();
-        });
-
-        log::info!("Added session to list: {}", session_id);
+        // In the new workspace system, tasks are created via CreateTaskFromWelcome
+        // This action might be deprecated, but we'll log it for now
+        log::warn!("AddSessionToList is deprecated in workspace-based system");
     }
 
     /// Handle click on "New Task" button - shows the welcome panel
@@ -298,10 +283,78 @@ impl ListTaskPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // Ensure this panel has focus before dispatching action
         log::debug!("Focusing on 'New Task' button");
         window.focus(&self.focus_handle);
         window.dispatch_action(Box::new(ShowWelcomePanel), cx);
+    }
+
+    /// Start periodic refresh to pick up new tasks
+    /// Polls every 2 seconds to reload workspace data
+    fn start_periodic_refresh(entity: &Entity<Self>, cx: &mut App) {
+        let weak_entity = entity.downgrade();
+        cx.spawn(async move |cx| {
+            loop {
+                // Wait 2 seconds between refreshes
+                smol::Timer::after(std::time::Duration::from_secs(2)).await;
+
+                // Reload workspace data
+                _ = cx.update(|cx| {
+                    if let Some(entity) = weak_entity.upgrade() {
+                        Self::load_workspace_data(&entity, cx);
+                    }
+                });
+            }
+        })
+        .detach();
+    }
+
+    /// Handle "Open project" click - add a workspace
+    fn on_open_project_click(&self, window: &mut Window, cx: &mut Context<Self>) {
+        log::debug!("Open project clicked");
+
+        let workspace_service = match AppState::global(cx).workspace_service() {
+            Some(service) => service.clone(),
+            None => {
+                log::error!("WorkspaceService not initialized");
+                return;
+            }
+        };
+
+        let weak_self = cx.entity().downgrade();
+        cx.spawn_in(window, async move |_this, _window| {
+            // Use the file picker to select a folder
+            match rfd::AsyncFileDialog::new()
+                .set_title("Select Project Folder")
+                .pick_folder()
+                .await
+            {
+                Some(folder) => {
+                    let path = folder.path().to_path_buf();
+                    log::info!("Selected folder: {:?}", path);
+
+                    // Add workspace
+                    match workspace_service.add_workspace(path).await {
+                        Ok(workspace) => {
+                            log::info!("Added workspace: {}", workspace.name);
+
+                            // Reload workspace data
+                            _ = _window.update(|window, cx| {
+                                if let Some(this) = weak_self.upgrade() {
+                                    Self::load_workspace_data(&this, cx);
+                                }
+                            });
+                        }
+                        Err(e) => {
+                            log::error!("Failed to add workspace: {}", e);
+                        }
+                    }
+                }
+                None => {
+                    log::debug!("Folder selection cancelled");
+                }
+            }
+        })
+        .detach();
     }
 }
 
@@ -313,6 +366,8 @@ impl Focusable for ListTaskPanel {
 
 impl Render for ListTaskPanel {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let panel_weak = cx.entity().downgrade();
+
         v_flex()
             .child(
                 Button::new("btn-new-task")
@@ -350,8 +405,10 @@ impl Render for ListTaskPanel {
                                     .icon(Icon::new(IconName::Plus))
                                     .ghost(),
                             )
-                            .content(|_state, _window, cx| {
+                            .content(move |_state, window, cx| {
                                 let popover_entity = cx.entity();
+                                let panel_weak_clone = panel_weak.clone();
+
                                 v_flex()
                                     .gap_1()
                                     .min_w(px(200.))
@@ -368,21 +425,19 @@ impl Render for ListTaskPanel {
                                             .hover(|style| style.bg(cx.theme().secondary))
                                             .on_mouse_down(MouseButton::Left, {
                                                 let popover = popover_entity.clone();
+                                                let panel_weak = panel_weak_clone.clone();
                                                 move |_, window, cx| {
                                                     // Close the popover first
                                                     popover.update(cx, |state, cx| {
                                                         state.dismiss(window, cx);
                                                     });
 
-                                                    // Then spawn the folder picker
-                                                    cx.spawn(async move |_cx| {
-                                                        utils::pick_and_log_folder(
-                                                            "Select Project Folder",
-                                                            "Task List",
-                                                        )
-                                                        .await;
-                                                    })
-                                                    .detach();
+                                                    // Open project
+                                                    if let Some(panel) = panel_weak.upgrade() {
+                                                        panel.update(cx, |this, cx| {
+                                                            this.on_open_project_click(window, cx);
+                                                        });
+                                                    }
                                                 }
                                             })
                                             .child(Icon::new(IconName::Folder).size(px(16.)))
@@ -394,7 +449,7 @@ impl Render for ListTaskPanel {
                                             ),
                                     )
                                     .child(
-                                        // Clone from URL button
+                                        // Clone from URL button (placeholder for future)
                                         div()
                                             .flex()
                                             .items_center()
@@ -412,7 +467,7 @@ impl Render for ListTaskPanel {
                                                         state.dismiss(window, cx);
                                                     });
 
-                                                    println!("Clone from URL clicked");
+                                                    log::info!("Clone from URL clicked");
                                                     // TODO: Implement clone from URL functionality
                                                 }
                                             })
@@ -434,7 +489,7 @@ impl Render for ListTaskPanel {
                                     .icon(Icon::new(IconName::Bell))
                                     .ghost()
                                     .on_click(|_, _, _| {
-                                        println!("Notifications clicked");
+                                        log::info!("Notifications clicked");
                                         // TODO: Implement notifications functionality
                                     }),
                             )
@@ -443,7 +498,7 @@ impl Render for ListTaskPanel {
                                     .icon(Icon::new(IconName::Settings))
                                     .ghost()
                                     .on_click(|_, _, _| {
-                                        println!("Settings clicked");
+                                        log::info!("Settings clicked");
                                         // TODO: Implement settings functionality
                                     }),
                             ),

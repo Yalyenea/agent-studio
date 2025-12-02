@@ -1,0 +1,34 @@
+{
+  "workspaces": [
+    {
+      "id": "9f86bc8d-1ab9-47a2-9ded-f01d9e954c10",
+      "name": "agent-studio",
+      "path": "/Users/shihua/Code/AIAgent/gpui-component/agent-studio",
+      "created_at": 1764686280,
+      "last_accessed": 1764686280
+    }
+  ],
+  "tasks": [
+    {
+      "id": "e515d0cf-f7b9-49a3-adf1-c93954cebce8",
+      "workspace_id": "9f86bc8d-1ab9-47a2-9ded-f01d9e954c10",
+      "name": "你好",
+      "agent_name": "Iflow",
+      "mode": "Auto",
+      "session_id": "3c8751ef-13b3-40bb-82a3-bf06733566c6",
+      "status": "InProgress",
+      "created_at": 1764689328
+    },
+    {
+      "id": "1b43af67-cbd4-4154-8400-cda6cc1e7ba1",
+      "workspace_id": "9f86bc8d-1ab9-47a2-9ded-f01d9e954c10",
+      "name": "你有啥能力",
+      "agent_name": "Iflow",
+      "mode": "Auto",
+      "session_id": "a13d71f2-dc9c-4723-9ddf-fc53623fc48a",
+      "status": "InProgress",
+      "created_at": 1764690297
+    }
+  ],
+  "active_workspace_id": "9f86bc8d-1ab9-47a2-9ded-f01d9e954c10"
+}

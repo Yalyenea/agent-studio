@@ -202,6 +202,14 @@ impl DockWorkspace {
             }
         };
 
+        let workspace_service = match AppState::global(cx).workspace_service() {
+            Some(service) => service.clone(),
+            None => {
+                log::error!("WorkspaceService not initialized");
+                return;
+            }
+        };
+
         let dock_area = self.dock_area.clone();
 
         cx.spawn_in(window, async move |_this, window| {
@@ -233,9 +241,48 @@ impl DockWorkspace {
                 }
             };
 
-            // Step 2: Clear welcome session and create ConversationPanel
+            // Step 2: Create WorkspaceTask
+            // Get active workspace
+            let workspace = match workspace_service.get_active_workspace().await {
+                Some(ws) => ws,
+                None => {
+                    log::error!("No active workspace available");
+                    return;
+                }
+            };
+
+            // Create task in workspace
+            let task = match workspace_service
+                .create_task(
+                    &workspace.id,
+                    task_input.clone(),
+                    agent_name.clone(),
+                    mode.clone(),
+                )
+                .await
+            {
+                Ok(task) => {
+                    log::info!("Created workspace task: {} in workspace: {}", task.name, workspace.id);
+                    task
+                }
+                Err(e) => {
+                    log::error!("Failed to create workspace task: {}", e);
+                    return;
+                }
+            };
+
+            // Associate session with task
+            if let Err(e) = workspace_service
+                .set_task_session(&task.id, session_id.clone())
+                .await
+            {
+                log::error!("Failed to associate session with task: {}", e);
+            }
+
+            // Step 3: Clear welcome session and create ConversationPanel
             // Panel will subscribe to session updates BEFORE we send the message
             let session_id_for_send = session_id.clone();
+            let task_id = task.id.clone();
             _ = window.update(move |window, cx| {
                 // Clear welcome session
                 AppState::global_mut(cx).clear_welcome_session();
@@ -257,9 +304,12 @@ impl DockWorkspace {
                         dock_area.toggle_dock(DockPlacement::Bottom, window, cx);
                     }
                 });
+
+                // Task created - ListTaskPanel will pick it up via periodic refresh
+                log::info!("[DockWorkspace] Task created ({})", task_id);
             });
 
-            // Step 3: Now send the message - panel is subscribed and will receive it
+            // Step 4: Now send the message - panel is subscribed and will receive it
             match message_service
                 .send_message_to_session(&agent_name, &session_id_for_send, task_input)
                 .await

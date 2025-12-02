@@ -11,15 +11,17 @@ use gpui_component::{
 };
 
 use crate::app::actions::SelectedAgentTask;
-use crate::components::TaskListItem;
+use crate::components::WorkspaceTaskItem;
 
 use super::types::TaskListDelegate as Delegate;
 
 impl ListDelegate for Delegate {
-    type Item = TaskListItem;
+    type Item = WorkspaceTaskItem;
 
     fn sections_count(&self, _: &App) -> usize {
-        self.industries.len()
+        let count = self.workspaces.len();
+        log::debug!("[TaskListDelegate] sections_count: {}", count);
+        count
     }
 
     fn items_count(&self, section: usize, _: &App) -> usize {
@@ -27,7 +29,9 @@ impl ListDelegate for Delegate {
         if self.is_section_collapsed(section) {
             0
         } else {
-            self.matched_agent_tasks[section].len()
+            let task_count = self.workspace_tasks.get(section).map(|tasks| tasks.len()).unwrap_or(0);
+            // Always show at least 1 item (placeholder if no tasks)
+            task_count.max(1)
         }
     }
 
@@ -62,13 +66,21 @@ impl ListDelegate for Delegate {
         _: &mut Window,
         cx: &mut App,
     ) -> Option<impl IntoElement> {
-        let Some(task_type) = self.industries.get(section) else {
+        let Some(workspace) = self.workspaces.get(section) else {
+            log::warn!("[TaskListDelegate] render_section_header: workspace {} not found", section);
             return None;
         };
+
+        log::debug!(
+            "[TaskListDelegate] render_section_header: section={}, workspace='{}'",
+            section,
+            workspace.name
+        );
 
         let is_collapsed = self.is_section_collapsed(section);
         let collapsed_sections = self.collapsed_sections.clone();
         let list_state = self.list_state.clone();
+        let workspace_name = workspace.name.clone();
 
         // Use ChevronRight when collapsed, ChevronDown when expanded
         let chevron_icon = if is_collapsed {
@@ -119,7 +131,7 @@ impl ListDelegate for Delegate {
                         })
                         .child(Icon::new(chevron_icon).size(px(14.)))
                         .child(Icon::new(IconName::Folder))
-                        .child(task_type.clone()),
+                        .child(workspace_name),
                 )
                 // Right side: add task button
                 .child(
@@ -138,7 +150,7 @@ impl ListDelegate for Delegate {
                                 .text_color(cx.theme().accent_foreground)
                         })
                         .on_mouse_down(MouseButton::Left, move |_, _window, _cx| {
-                            println!("Add new task to section: {}", section);
+                            println!("Add new task to workspace: {}", section);
                             // TODO: Implement add task functionality
                         })
                         .child(Icon::new(IconName::Plus).size(px(14.))),
@@ -146,19 +158,31 @@ impl ListDelegate for Delegate {
         )
     }
 
-    fn render_item(&self, ix: IndexPath, _: &mut Window, _: &mut App) -> Option<Self::Item> {
+    fn render_item(&self, ix: IndexPath, _: &mut Window, cx: &mut App) -> Option<Self::Item> {
         let selected = Some(ix) == self.selected_index || Some(ix) == self.confirmed_index;
-        if let Some(agent_task) = self.matched_agent_tasks[ix.section].get(ix.row) {
-            return Some(TaskListItem::new(ix, agent_task.clone(), selected));
+
+        // Check if this workspace has tasks
+        let has_tasks = self.workspace_tasks
+            .get(ix.section)
+            .map(|tasks| !tasks.is_empty())
+            .unwrap_or(false);
+
+        if !has_tasks && ix.row == 0 {
+            // Show placeholder for empty workspace
+            return Some(WorkspaceTaskItem::placeholder(ix, selected));
         }
 
-        None
+        let task = self.workspace_tasks
+            .get(ix.section)
+            .and_then(|tasks| tasks.get(ix.row))?;
+
+        Some(WorkspaceTaskItem::new(ix, task.clone(), selected))
     }
 
     fn render_empty(&self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         // Check if we have sections but all are collapsed
-        let has_collapsed_sections = !self.industries.is_empty()
-            && self.industries.len() == self.collapsed_sections.borrow().len();
+        let has_collapsed_sections = !self.workspaces.is_empty()
+            && self.workspaces.len() == self.collapsed_sections.borrow().len();
 
         if has_collapsed_sections {
             // Render section headers so user can expand them
@@ -169,13 +193,13 @@ impl ListDelegate for Delegate {
                 .w_full()
                 .gap_1()
                 .children(
-                    self.industries
+                    self.workspaces
                         .iter()
                         .enumerate()
-                        .map(|(section, task_type)| {
+                        .map(|(section, workspace)| {
                             let collapsed_sections = collapsed_sections.clone();
                             let list_state = list_state.clone();
-                            let task_type = task_type.clone();
+                            let workspace_name = workspace.name.clone();
 
                             div()
                                 .flex()
@@ -210,7 +234,7 @@ impl ListDelegate for Delegate {
                                         })
                                         .child(Icon::new(IconName::ChevronRight).size(px(14.)))
                                         .child(Icon::new(IconName::Folder))
-                                        .child(task_type),
+                                        .child(workspace_name),
                                 )
                         }),
                 )
@@ -249,9 +273,10 @@ impl ListDelegate for Delegate {
 
             _ = view.update_in(window, move |view, window, cx| {
                 let query = view.delegate().query.clone();
-                view.delegate_mut().extend_more(200);
+                // For workspace-based structure, we could load more workspaces/tasks here
+                // For now, mark as EOF since we load all workspaces at once
                 _ = view.delegate_mut().perform_search(&query, window, cx);
-                view.delegate_mut().eof = view.delegate()._agent_tasks.len() >= 6000;
+                view.delegate_mut().eof = true;
             });
         })
         .detach();

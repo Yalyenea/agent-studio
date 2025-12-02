@@ -1,11 +1,10 @@
 use std::sync::Arc;
-
 use gpui::{App, AppContext, Entity, Global, SharedString};
 
 use crate::{
     core::agent::{AgentManager, PermissionStore},
     core::event_bus::{PermissionBusContainer, SessionUpdateBusContainer},
-    core::services::{AgentService, MessageService},
+    core::services::{AgentService, MessageService, WorkspaceService},
 };
 
 /// Welcome session info - stores the session created when user selects an agent
@@ -26,10 +25,20 @@ pub struct AppState {
     /// Service layer
     agent_service: Option<Arc<AgentService>>,
     message_service: Option<Arc<MessageService>>,
+    workspace_service: Option<Arc<WorkspaceService>>,
 }
 
 impl AppState {
     pub fn init(cx: &mut App) {
+        // Initialize WorkspaceService with config path
+        let config_path = if cfg!(debug_assertions) {
+            std::path::PathBuf::from("target/workspace-config.json")
+        } else {
+            std::path::PathBuf::from("workspace-config.json")
+        };
+
+        let workspace_service = Arc::new(WorkspaceService::new(config_path));
+
         let state = Self {
             invisible_panels: cx.new(|_| Vec::new()),
             agent_manager: None,
@@ -39,6 +48,7 @@ impl AppState {
             welcome_session: None,
             agent_service: None,
             message_service: None,
+            workspace_service: Some(workspace_service),
         };
         cx.set_global::<AppState>(state);
     }
@@ -117,6 +127,11 @@ impl AppState {
     /// Get the MessageService
     pub fn message_service(&self) -> Option<&Arc<MessageService>> {
         self.message_service.as_ref()
+    }
+
+    /// Get the WorkspaceService
+    pub fn workspace_service(&self) -> Option<&Arc<WorkspaceService>> {
+        self.workspace_service.as_ref()
     }
 }
 impl Global for AppState {}
