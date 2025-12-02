@@ -9,7 +9,7 @@ use gpui_component::{
 use std::{sync::Arc, time::Duration};
 
 use crate::{
-    panels::dock_panel::DockPanelContainer, AddPanel, AppState, AppTitleBar, ChatInputPanel,
+    panels::dock_panel::DockPanelContainer, AddPanel, AppState, AppTitleBar, SessionManagerPanel,
     CodeEditorPanel, ConversationPanelAcp, ListTaskPanel, SessionManagerPanel,
     ToggleDockToggleButton, TogglePanelVisible,
 };
@@ -252,7 +252,7 @@ impl DockWorkspace {
         let bottom_panels = DockItem::split_with_sizes(
             Axis::Vertical,
             vec![DockItem::tabs(
-                vec![Arc::new(DockPanelContainer::panel::<ChatInputPanel>(
+                vec![Arc::new(DockPanelContainer::panel::<SessionManagerPanel>(
                     window, cx,
                 ))],
                 None,

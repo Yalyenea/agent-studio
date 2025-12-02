@@ -142,13 +142,11 @@ src/
    - **ConversationPanel** (`conversation.rs`): Mock conversation UI showcasing all message types
    - **ConversationPanelAcp** (`conversation_acp/`): **ACP-enabled conversation panel** with real-time event bus integration
      - Modularized into `panel.rs` (main logic), `types.rs` (reusable helpers), and `mod.rs`
-     - Uses **MessageService** for simplified subscription with automatic session filtering
+     - Uses **MessageService** for unified message sending (session creation, event publishing, prompt sending)
    - **CodeEditorPanel** (`code_editor/`): High-performance code editor with LSP integration and tree-sitter
      - Modularized into subdirectory with separate modules for LSP providers, storage, and panel logic
    - **ListTaskPanel** (`task_list/`): Task list with collapsible sections
      - Modularized into subdirectory with separate types, delegate, and panel logic
-   - **ChatInputPanel** (`chat_input.rs`): Chat input panel with agent/mode selectors
-     - Uses **MessageService** for unified message sending (session creation, event publishing, prompt sending)
    - **WelcomePanel** (`welcome_panel.rs`): Welcome screen for new sessions
 
 6. **Core Infrastructure** (`src/core/`):

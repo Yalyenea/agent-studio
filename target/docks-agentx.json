@@ -137,7 +137,7 @@
               "children": [],
               "info": {
                 "panel": {
-                  "story_klass": "ChatInputPanel"
+                  "story_klass": "SessionManagerPanel"
                 }
               }
             }

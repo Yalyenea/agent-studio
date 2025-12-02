@@ -1,5 +1,5 @@
 // Panel-related modules
-mod chat_input;
+
 pub mod code_editor;
 mod conversation;
 pub mod conversation_acp;
@@ -10,7 +10,6 @@ mod task_list;
 mod welcome_panel;
 
 // Re-export panel types
-pub use chat_input::ChatInputPanel;
 pub use code_editor::CodeEditorPanel;
 pub use conversation::ConversationPanel;
 pub use conversation_acp::ConversationPanelAcp;
