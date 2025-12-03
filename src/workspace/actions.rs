@@ -46,8 +46,20 @@ impl DockWorkspace {
 
         let conversation_item =
             DockItem::tab(conversation_panel, &self.dock_area.downgrade(), window, cx);
+
+        let conversation_dock = DockItem::split_with_sizes(
+            Axis::Horizontal,
+            vec![
+                conversation_item
+            ],
+            vec![None, None],
+            &self.dock_area.downgrade(),
+            window,
+            cx,
+        );
+
         self.dock_area.update(cx, |dock_area, cx| {
-            dock_area.set_center(conversation_item, window, cx);
+            dock_area.set_center(conversation_dock, window, cx);
         });
     }
     /// Handle AddPanel action - randomly add a conversation panel to specified dock area
