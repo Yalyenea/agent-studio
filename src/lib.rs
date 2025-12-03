@@ -13,8 +13,8 @@ mod test_mock_data;
 // Re-export from panels module
 use crate::panels::{DockPanel, DockPanelContainer, DockPanelState};
 pub use panels::{
-    CodeEditorPanel, ConversationPanel, ConversationPanelAcp, ListTaskPanel, SessionManagerPanel,
-    SettingsWindow, WelcomePanel,
+    CodeEditorPanel, ConversationPanel, ConversationPanelAcp, SessionManagerPanel,
+    SettingsWindow, TaskPanel, WelcomePanel,
 };
 
 // Re-export from core module
@@ -271,7 +271,7 @@ fn create_panel_view(
     }
 
     match story_klass.to_string().as_str() {
-        "ListTaskPanel" => story!(ListTaskPanel),
+        "TaskPanel" => story!(TaskPanel),
         "CodeEditorPanel" => story!(CodeEditorPanel),
         "ConversationPanel" => story!(ConversationPanel),
         "ConversationPanelAcp" => story!(ConversationPanelAcp),

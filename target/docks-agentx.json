@@ -26,7 +26,7 @@
     "info": {
       "stack": {
         "sizes": [
-          660.0
+          100.0
         ],
         "axis": 0
       }
@@ -44,7 +44,7 @@
               "children": [],
               "info": {
                 "panel": {
-                  "story_klass": "ListTaskPanel"
+                  "story_klass": "TaskPanel"
                 }
               }
             }
@@ -59,7 +59,7 @@
       "info": {
         "stack": {
           "sizes": [
-            872.6667
+            100.0
           ],
           "axis": 1
         }
@@ -84,6 +84,15 @@
                   "story_klass": "CodeEditorPanel"
                 }
               }
+            },
+            {
+              "panel_name": "DockPanelContainer",
+              "children": [],
+              "info": {
+                "panel": {
+                  "story_klass": "SessionManagerPanel"
+                }
+              }
             }
           ],
           "info": {
@@ -96,14 +105,14 @@
       "info": {
         "stack": {
           "sizes": [
-            872.6667
+            100.0
           ],
           "axis": 1
         }
       }
     },
     "placement": "right",
-    "size": 440.66663,
+    "size": 480.0,
     "open": true
   },
   "bottom_dock": {
@@ -133,7 +142,7 @@
       "info": {
         "stack": {
           "sizes": [
-            200.0
+            100.0
           ],
           "axis": 1
         }

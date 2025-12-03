@@ -311,7 +311,7 @@ impl DockWorkspace {
                     }
                 });
 
-                // Task created - ListTaskPanel will pick it up via periodic refresh
+                // Task created - TaskPanel will pick it up via periodic refresh
                 log::info!("[DockWorkspace] Task created ({})", task_id);
             });
 

@@ -10,7 +10,7 @@ use std::{sync::Arc, time::Duration};
 
 use crate::{
     panels::dock_panel::DockPanelContainer, AddPanel, AppState, AppTitleBar, CodeEditorPanel,
-    ConversationPanelAcp, ListTaskPanel, SessionManagerPanel, ToggleDockToggleButton,
+    ConversationPanelAcp, SessionManagerPanel, TaskPanel, ToggleDockToggleButton,
     TogglePanelVisible,
 };
 
@@ -238,7 +238,7 @@ impl DockWorkspace {
         let left_panels = DockItem::split_with_sizes(
             Axis::Vertical,
             vec![DockItem::tab(
-                DockPanelContainer::panel::<ListTaskPanel>(window, cx),
+                DockPanelContainer::panel::<TaskPanel>(window, cx),
                 &dock_area,
                 window,
                 cx,
