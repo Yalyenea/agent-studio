@@ -108,6 +108,8 @@ pub struct WelcomePanel {
     has_agents: bool,
     has_workspace: bool,
     active_workspace_name: Option<String>,
+    /// Specific workspace ID to display (if provided via action)
+    workspace_id: Option<String>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -131,7 +133,24 @@ impl crate::panels::dock_panel::DockPanel for WelcomePanel {
 
 impl WelcomePanel {
     pub fn view(window: &mut Window, cx: &mut App) -> Entity<Self> {
-        let entity = cx.new(|cx| Self::new(window, cx));
+        Self::view_internal(None, window, cx)
+    }
+
+    /// Create a WelcomePanel for a specific workspace
+    pub fn view_for_workspace(
+        workspace_id: String,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Entity<Self> {
+        Self::view_internal(Some(workspace_id), window, cx)
+    }
+
+    fn view_internal(
+        workspace_id: Option<String>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Entity<Self> {
+        let entity = cx.new(|cx| Self::new(workspace_id.clone(), window, cx));
 
         // Subscribe to agent_select focus to refresh agents list when no agents available
         entity.update(cx, |this, cx| {
@@ -162,30 +181,53 @@ impl WelcomePanel {
             this._subscriptions.push(session_select_sub);
         });
 
-        // Load workspace info
-        Self::load_workspace_info(&entity, cx);
+        // Load workspace info immediately and refresh on each panel creation
+        Self::load_workspace_info(&entity, workspace_id.as_deref(), cx);
 
         entity
     }
 
     /// Load workspace info from WorkspaceService
-    fn load_workspace_info(entity: &Entity<Self>, cx: &mut App) {
+    /// If workspace_id is provided, load that specific workspace
+    /// Otherwise, load the active workspace
+    fn load_workspace_info(entity: &Entity<Self>, workspace_id: Option<&str>, cx: &mut App) {
         let workspace_service = match AppState::global(cx).workspace_service() {
             Some(service) => service.clone(),
-            None => return,
+            None => {
+                log::warn!("[WelcomePanel] WorkspaceService not available");
+                return;
+            }
         };
 
+        log::info!(
+            "[WelcomePanel] Loading workspace info (workspace_id: {:?})...",
+            workspace_id
+        );
+        let workspace_id = workspace_id.map(|s| s.to_string());
         let weak_entity = entity.downgrade();
         cx.spawn(async move |cx| {
-            // Get active workspace
-            let active_workspace = workspace_service.get_active_workspace().await;
+            // Get workspace - either specific or active
+            let workspace = if let Some(ws_id) = workspace_id {
+                workspace_service.get_workspace(&ws_id).await
+            } else {
+                workspace_service.get_active_workspace().await
+            };
+
+            log::info!(
+                "[WelcomePanel] Loaded workspace: {:?}",
+                workspace.as_ref().map(|ws| &ws.name)
+            );
 
             // Update UI
             _ = cx.update(|cx| {
                 if let Some(entity) = weak_entity.upgrade() {
                     entity.update(cx, |this, cx| {
-                        this.has_workspace = active_workspace.is_some();
-                        this.active_workspace_name = active_workspace.map(|ws| ws.name);
+                        this.has_workspace = workspace.is_some();
+                        this.active_workspace_name = workspace.map(|ws| ws.name);
+                        log::info!(
+                            "[WelcomePanel] Updated workspace name: {:?}",
+                            this.active_workspace_name
+                        );
                         cx.notify();
                     });
                 }
@@ -194,7 +236,7 @@ impl WelcomePanel {
         .detach();
     }
 
-    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+    fn new(workspace_id: Option<String>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let input_state = cx.new(|cx| {
             InputState::new(window, cx)
                 .auto_grow(2, 8) // Auto-grow from 2 to 8 rows
@@ -257,6 +299,7 @@ impl WelcomePanel {
             has_agents,
             has_workspace: false,
             active_workspace_name: None,
+            workspace_id,
             _subscriptions: Vec::new(),
         };
 

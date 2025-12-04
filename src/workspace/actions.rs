@@ -153,12 +153,16 @@ impl DockWorkspace {
     /// Handle ShowWelcomePanel action - display welcome panel and collapse docks
     pub(super) fn on_action_show_welcome_panel(
         &mut self,
-        _: &ShowWelcomePanel,
+        action: &ShowWelcomePanel,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // Create WelcomePanel for the center
-        let welcome_panel = DockPanelContainer::panel::<WelcomePanel>(window, cx);
+        // Create WelcomePanel for the center with optional workspace_id
+        let welcome_panel = if let Some(workspace_id) = &action.workspace_id {
+            DockPanelContainer::panel_for_workspace(workspace_id.clone(), window, cx)
+        } else {
+            DockPanelContainer::panel::<WelcomePanel>(window, cx)
+        };
         let welcome_item = DockItem::tab(welcome_panel, &self.dock_area.downgrade(), window, cx);
 
         self.dock_area.update(cx, |dock_area, cx| {

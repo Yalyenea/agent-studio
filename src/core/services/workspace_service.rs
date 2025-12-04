@@ -153,6 +153,12 @@ impl WorkspaceService {
         config.get_workspace(workspace_id).cloned()
     }
 
+    /// Get a specific workspace by ID
+    pub async fn get_workspace(&self, workspace_id: &str) -> Option<Workspace> {
+        let config = self.config.read().await;
+        config.get_workspace(workspace_id).cloned()
+    }
+
     /// Set the active workspace
     pub async fn set_active_workspace(&self, workspace_id: &str) -> Result<()> {
         {

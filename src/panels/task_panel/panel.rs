@@ -534,20 +534,25 @@ impl TaskPanel {
                     }),
             )
             .when(is_expanded, |this| {
-                this.child(self.render_new_task_button(cx)).children(
-                    workspace
-                        .tasks
-                        .iter()
-                        .map(|task| self.render_task_item(task, cx)),
-                )
+                this.child(self.render_new_task_button(&workspace.id, cx))
+                    .children(
+                        workspace
+                            .tasks
+                            .iter()
+                            .map(|task| self.render_task_item(task, cx)),
+                    )
             })
     }
 
-    fn render_new_task_button(&self, cx: &Context<Self>) -> impl IntoElement {
+    fn render_new_task_button(&self, workspace_id: &str, cx: &Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
+        let workspace_id = workspace_id.to_string();
 
         h_flex()
-            .id("new-task-button")
+            .id(SharedString::from(format!(
+                "new-task-button-{}",
+                workspace_id
+            )))
             .w_full()
             .justify_between()
             .items_center()
@@ -555,9 +560,15 @@ impl TaskPanel {
             .py_1p5()
             .cursor_pointer()
             .hover(|s| s.bg(theme.accent.opacity(0.3)))
-            .on_click(cx.listener(|_this, _, window, cx| {
+            .on_click(cx.listener(move |_this, _, window, cx| {
                 // Dispatch action to show welcome panel for creating new task
-                window.dispatch_action(Box::new(ShowWelcomePanel), cx);
+                // Pass the workspace_id so the welcome panel can display the workspace name
+                window.dispatch_action(
+                    Box::new(ShowWelcomePanel {
+                        workspace_id: Some(workspace_id.clone()),
+                    }),
+                    cx,
+                );
             }))
             .child(
                 h_flex()

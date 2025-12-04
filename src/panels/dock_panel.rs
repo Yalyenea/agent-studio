@@ -245,6 +245,37 @@ impl DockPanelContainer {
         view
     }
 
+    /// Create a WelcomePanel for a specific workspace
+    /// This will display the workspace name when creating a new task
+    pub fn panel_for_workspace(
+        workspace_id: String,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Entity<Self> {
+        use crate::panels::welcome_panel::WelcomePanel;
+
+        let name = WelcomePanel::title();
+        let description = WelcomePanel::description();
+        let story = WelcomePanel::view_for_workspace(workspace_id, window, cx);
+        let story_klass = WelcomePanel::klass();
+
+        let view = cx.new(|cx| {
+            let mut container = Self::new(cx)
+                .story(story.into(), story_klass)
+                .on_active(WelcomePanel::on_active_any);
+            container.focus_handle = cx.focus_handle();
+            container.closable = WelcomePanel::closable();
+            container.zoomable = WelcomePanel::zoomable();
+            container.name = name.into();
+            container.description = description.into();
+            container.title_bg = WelcomePanel::title_bg();
+            container.paddings = WelcomePanel::paddings();
+            container
+        });
+
+        view
+    }
+
     pub fn width(mut self, width: gpui::Pixels) -> Self {
         self.width = Some(width);
         self
