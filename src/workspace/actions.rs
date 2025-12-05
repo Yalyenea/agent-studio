@@ -11,7 +11,7 @@ use crate::{
     panels::{dock_panel::DockPanelContainer, DockPanel},
     title_bar::OpenSettings,
     utils, AddPanel, AppState, ConversationPanel, CreateTaskFromWelcome,
-    NewSessionConversationPanel, SettingsWindow, ShowConversationPanel, ShowWelcomePanel,
+    NewSessionConversationPanel, SettingsPanel, ShowConversationPanel, ShowWelcomePanel,
     ToggleDockToggleButton, TogglePanelVisible, WelcomePanel,
 };
 
@@ -196,7 +196,7 @@ impl DockWorkspace {
         cx: &mut Context<Self>,
     ) {
         log::info!("Adding new Settings panel");
-        let panel = Arc::new(DockPanelContainer::panel::<SettingsWindow>(window, cx));
+        let panel = Arc::new(DockPanelContainer::panel::<SettingsPanel>(window, cx));
 
         self.dock_area.update(cx, |dock_area, cx| {
             dock_area.add_panel(panel, DockPlacement::Center, None, window, cx);
