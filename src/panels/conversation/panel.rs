@@ -14,12 +14,11 @@ use gpui_component::{
 
 // Use the published ACP schema crate
 use agent_client_protocol_schema::{
-    ContentBlock, ContentChunk, EmbeddedResourceResource, Plan, SessionUpdate, ToolCall,
-    ToolCallContent, ToolCallStatus,
+    ContentBlock, ContentChunk, EmbeddedResourceResource, ImageContent, Plan, SessionUpdate, ToolCall, ToolCallContent, ToolCallStatus
 };
 
 use crate::{
-    AgentMessage, AgentMessageData, AgentTodoList, AppState, ChatInputBox, PermissionRequestView, ShowToolCallDetail, UserMessageData, components::PastedImage, core::agent::AgentHandle, panels::dock_panel::DockPanel
+    AgentMessage, AgentMessageData, AgentTodoList, AppState, ChatInputBox, PermissionRequestView, ShowToolCallDetail, UserMessageData, core::agent::AgentHandle, panels::dock_panel::DockPanel
 };
 
 // Import from types module
@@ -568,8 +567,8 @@ pub struct ConversationPanel {
     scroll_handle: ScrollHandle,
     /// Input state for the chat input box
     input_state: Entity<InputState>,
-    /// List of pasted images
-    pasted_images: Vec<PastedImage>,
+    /// List of pasted images: (ImageContent, filename)
+    pasted_images: Vec<(ImageContent, String)>,
 }
 
 impl ConversationPanel {
@@ -1242,7 +1241,7 @@ impl ConversationPanel {
                     handled = true;
 
                     cx.spawn_in(window, async move |this, cx| {
-                        // Write image to temp file
+                        // Write image to temp file first (to get filename)
                         match crate::utils::file::write_image_to_temp_file(&image).await {
                             Ok(temp_path) => {
                                 log::info!("Image written to temp file: {}", temp_path);
@@ -1254,16 +1253,41 @@ impl ConversationPanel {
                                     .unwrap_or("image.png")
                                     .to_string();
 
-                                // Add to pasted_images
-                                _ = cx.update(move |_window, cx| {
-                                    let _ = this.update(cx, |this, cx| {
-                                        this.pasted_images.push(PastedImage {
-                                            path: temp_path,
-                                            filename,
+                                // Read the file and convert to base64 (using std::fs for sync read)
+                                match std::fs::read(&temp_path) {
+                                    Ok(bytes) => {
+                                        use base64::Engine;
+                                        let base64_data = base64::engine::general_purpose::STANDARD.encode(&bytes);
+
+                                        // Determine MIME type from format
+                                        let mime_type = match image.format {
+                                            gpui::ImageFormat::Png => "image/png",
+                                            gpui::ImageFormat::Jpeg => "image/jpeg",
+                                            gpui::ImageFormat::Webp => "image/webp",
+                                            gpui::ImageFormat::Gif => "image/gif",
+                                            gpui::ImageFormat::Svg => "image/svg+xml",
+                                            gpui::ImageFormat::Bmp => "image/bmp",
+                                            gpui::ImageFormat::Tiff => "image/tiff",
+                                        }.to_string();
+
+                                        // Create ImageContent
+                                        let image_content = ImageContent::new(base64_data, mime_type);
+
+                                        // Add to pasted_images
+                                        _ = cx.update(move |_window, cx| {
+                                            let _ = this.update(cx, |this, cx| {
+                                                this.pasted_images.push((image_content, filename));
+                                                cx.notify();
+                                            });
                                         });
-                                        cx.notify();
-                                    });
-                                });
+
+                                        // Optionally delete the temp file after reading
+                                        let _ = std::fs::remove_file(&temp_path);
+                                    }
+                                    Err(e) => {
+                                        log::error!("Failed to read image file: {}", e);
+                                    }
+                                }
                             }
                             Err(e) => {
                                 log::error!("Failed to write image to temp file: {}", e);
@@ -1278,7 +1302,7 @@ impl ConversationPanel {
     }
 
     /// Send a message to the current session
-    fn send_message(&self, text: String, cx: &mut Context<Self>) {
+    fn send_message(&self, text: String, images: &Vec<(ImageContent, String)>, cx: &mut Context<Self>) {
         // Only send if we have a session_id
         let Some(ref session_id) = self.session_id else {
             log::warn!("Cannot send message: no session_id");
@@ -1288,6 +1312,7 @@ impl ConversationPanel {
         log::info!("Sending message to session: {}", session_id);
 
         let session_id = session_id.clone();
+        let images_clone = images.clone();
 
         // Spawn async task to send the message
         cx.spawn(async move |_this, cx| {
@@ -1323,25 +1348,44 @@ impl ConversationPanel {
                 .ok()
                 .flatten();
 
-            if let Some(agent_handle) = agent_handle {
-                // Send the prompt
-                let request = agent_client_protocol::PromptRequest {
-                    session_id: agent_client_protocol::SessionId::from(session_id.clone()),
-                    prompt: vec![text.into()],
-                    meta: None,
-                };
+            // if let Some(agent_handle) = agent_handle {
+            //     // Build prompt with text and images
+            //     let mut prompt_blocks: Vec<agent_client_protocol::ContentBlock> = Vec::new();
 
-                match agent_handle.prompt(request).await {
-                    Ok(_) => {
-                        log::info!("Prompt sent successfully to session: {}", session_id);
-                    }
-                    Err(e) => {
-                        log::error!("Failed to send prompt to session {}: {}", session_id, e);
-                    }
-                }
-            } else {
-                log::error!("No agent handle available");
-            }
+            //     // Add text content
+            //     prompt_blocks.push(text.clone().into());
+
+            //     // Add image contents - convert schema::ImageContent to agent_client_protocol::ImageContent
+            //     for (image_content, _filename) in images_clone.iter() {
+            //         // Create agent_client_protocol::ImageContent from the data
+            //         let acp_image = agent_client_protocol::ImageContent {
+            //             annotations: None,
+            //             data: image_content.data.clone(),
+            //             mime_type: image_content.mime_type.clone(),
+            //             uri: image_content.uri.clone(),
+            //             meta: None,
+            //         };
+            //         prompt_blocks.push(agent_client_protocol::ContentBlock::Image(acp_image));
+            //     }
+            //     log::debug!("---------> Sending prompt: {:?}", prompt_blocks);
+            //     // Send the prompt
+            //     let request = agent_client_protocol::PromptRequest {
+            //         session_id: agent_client_protocol::SessionId::from(session_id.clone()),
+            //         prompt: prompt_blocks,
+            //         meta: None,
+            //     };
+
+            //     match agent_handle.prompt(request).await {
+            //         Ok(_) => {
+            //             log::info!("Prompt sent successfully to session: {}", session_id);
+            //         }
+            //         Err(e) => {
+            //             log::error!("Failed to send prompt to session {}: {}", session_id, e);
+            //         }
+            //     }
+            // } else {
+            //     log::error!("No agent handle available");
+            // }
         })
         .detach();
     }
@@ -1512,7 +1556,7 @@ impl Render for ConversationPanel {
                                         });
 
                                         // Send the message with images if any
-                                        this.send_message(text, cx);
+                                        this.send_message(text, &this.pasted_images, cx);
 
                                         // Clear pasted images after sending
                                         this.pasted_images.clear();

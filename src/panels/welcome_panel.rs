@@ -10,8 +10,10 @@ use gpui_component::{
     v_flex, ActiveTheme, IndexPath, StyledExt,
 };
 
+use agent_client_protocol_schema::ImageContent;
+
 use crate::{
-    components::{ChatInputBox, PastedImage},
+    components::ChatInputBox,
     AppState, CreateTaskFromWelcome, WelcomeSession,
 };
 
@@ -113,7 +115,7 @@ pub struct WelcomePanel {
     active_workspace_name: Option<String>,
     /// Specific workspace ID to display (if provided via action)
     workspace_id: Option<String>,
-    pasted_images: Vec<PastedImage>,
+    pasted_images: Vec<(ImageContent, String)>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -579,8 +581,8 @@ impl WelcomePanel {
                     let image = image.clone();
                     handled = true;
 
-                    cx.spawn_in(window, async move |this, mut cx| {
-                        // Write image to temp file
+                    cx.spawn_in(window, async move |this, cx| {
+                        // Write image to temp file first (to get filename)
                         match crate::utils::file::write_image_to_temp_file(&image).await {
                             Ok(temp_path) => {
                                 log::info!("Image written to temp file: {}", temp_path);
@@ -592,16 +594,41 @@ impl WelcomePanel {
                                     .unwrap_or("image.png")
                                     .to_string();
 
-                                // Add to pasted_images
-                                _ = cx.update(move |_window, cx| {
-                                    this.update(cx, |this, cx| {
-                                        this.pasted_images.push(PastedImage {
-                                            path: temp_path,
-                                            filename,
+                                // Read the file and convert to base64 (using std::fs for sync read)
+                                match std::fs::read(&temp_path) {
+                                    Ok(bytes) => {
+                                        use base64::Engine;
+                                        let base64_data = base64::engine::general_purpose::STANDARD.encode(&bytes);
+
+                                        // Determine MIME type from format
+                                        let mime_type = match image.format {
+                                            gpui::ImageFormat::Png => "image/png",
+                                            gpui::ImageFormat::Jpeg => "image/jpeg",
+                                            gpui::ImageFormat::Webp => "image/webp",
+                                            gpui::ImageFormat::Gif => "image/gif",
+                                            gpui::ImageFormat::Svg => "image/svg+xml",
+                                            gpui::ImageFormat::Bmp => "image/bmp",
+                                            gpui::ImageFormat::Tiff => "image/tiff",
+                                        }.to_string();
+
+                                        // Create ImageContent
+                                        let image_content = ImageContent::new(base64_data, mime_type);
+
+                                        // Add to pasted_images
+                                        _ = cx.update(move |_window, cx| {
+                                            let _ = this.update(cx, |this, cx| {
+                                                this.pasted_images.push((image_content, filename));
+                                                cx.notify();
+                                            });
                                         });
-                                        cx.notify();
-                                    });
-                                });
+
+                                        // Optionally delete the temp file after reading
+                                        let _ = std::fs::remove_file(&temp_path);
+                                    }
+                                    Err(e) => {
+                                        log::error!("Failed to read image file: {}", e);
+                                    }
+                                }
                             }
                             Err(e) => {
                                 log::error!("Failed to write image to temp file: {}", e);

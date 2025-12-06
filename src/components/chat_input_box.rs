@@ -14,6 +14,8 @@ use gpui_component::{
     v_flex, ActiveTheme, Disableable, Icon, IconName, Sizable,
 };
 
+use agent_client_protocol_schema::ImageContent;
+
 /// A reusable chat input component with context controls and send button.
 ///
 /// Features:
@@ -37,16 +39,9 @@ pub struct ChatInputBox {
     agent_select: Option<Entity<SelectState<Vec<String>>>>,
     session_select: Option<Entity<SelectState<Vec<String>>>>,
     on_new_session: Option<Box<dyn Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static>>,
-    pasted_images: Vec<PastedImage>,
+    pasted_images: Vec<(ImageContent, String)>, // (ImageContent, filename for display)
     on_remove_image: Option<Rc<dyn Fn(&usize, &mut Window, &mut App) + 'static>>,
     on_paste: Option<Rc<dyn Fn(&mut Window, &mut App) + 'static>>,
-}
-
-/// Information about a pasted image
-#[derive(Clone, Debug)]
-pub struct PastedImage {
-    pub path: String,
-    pub filename: String,
 }
 
 impl ChatInputBox {
@@ -140,7 +135,7 @@ impl ChatInputBox {
     }
 
     /// Set the list of pasted images
-    pub fn pasted_images(mut self, images: Vec<PastedImage>) -> Self {
+    pub fn pasted_images(mut self, images: Vec<(ImageContent, String)>) -> Self {
         self.pasted_images = images;
         self
     }
@@ -264,7 +259,7 @@ impl RenderOnce for ChatInputBox {
                             .w_full()
                             .gap_2()
                             .items_center()
-                            .children(self.pasted_images.iter().enumerate().map(|(idx, image)| {
+                            .children(self.pasted_images.iter().enumerate().map(|(idx, (_image, filename))| {
                                 let on_remove = self.on_remove_image.clone();
                                 let idx_clone = idx;
 
@@ -286,7 +281,7 @@ impl RenderOnce for ChatInputBox {
                                         div()
                                             .text_size(px(12.))
                                             .text_color(theme.foreground)
-                                            .child(image.filename.clone()),
+                                            .child(filename.clone()),
                                     )
                                     .child(
                                         Button::new(("remove-image", idx))
