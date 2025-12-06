@@ -1,100 +1,414 @@
-# Agent Studio
+# AgentX - AI Agent Studio
 
-An Agent Studio built with gpui-component to create a window with a custom title bar. This application provides a comprehensive environment for interacting with AI agents, featuring a dock-based interface, code editing capabilities, and conversation management.
+A full-featured desktop application built with [GPUI Component](https://github.com/sxhxliang/gpui-component), showcasing a modern dock-based interface for interacting with AI agents. AgentX demonstrates professional-grade UI patterns, real-time event-driven architecture, and comprehensive agent communication capabilities.
 
-## Features
+![AgentX Screenshot](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)
+![Rust Version](https://img.shields.io/badge/Rust-1.75%2B-orange)
+![License](https://img.shields.io/badge/License-MIT-green)
 
-- **Dock-based Interface**: Flexible panel layout with support for multiple views
-- **Code Editor**: Integrated code editing with language server protocol (LSP) support
-- **AI Agent Integration**: Connect and interact with multiple AI agents
-- **Conversation Management**: Rich conversation interface with message history
-- **Task Management**: Track and manage tasks within the application
-- **Custom Title Bar**: Native-appearing custom window controls
-- **Theme Support**: Multiple color themes with system integration
+## ✨ Features
 
-## Installation
+### 🎨 **Modern UI Architecture**
+- **Dock-based Layout System**: Flexible panel management with four dock areas (Center, Left, Right, Bottom)
+- **Persistent Layout State**: Automatic layout saving/loading with versioning support
+- **Custom Title Bar**: Native-looking custom window controls on all platforms
+- **Theme System**: Multiple color themes with light/dark mode support
+
+### 💬 **AI Agent Integration**
+- **Real-time Communication**: Event-driven architecture using publish-subscribe pattern
+- **Session Management**: Multi-session support with session-scoped message routing
+- **Agent Client Protocol (ACP)**: Full implementation of agent communication protocol
+- **Permission Handling**: Interactive permission request workflow
+
+### 🛠️ **Development Tools**
+- **Code Editor**: Integrated editor with LSP support (diagnostics, completion, hover, code actions)
+- **Tree-sitter Integration**: Syntax highlighting for multiple languages
+- **Task Management**: Collapsible task list with status tracking
+- **Conversation UI**: Rich message components with markdown support and streaming
+
+### 🏗️ **Architecture Highlights**
+- **Service Layer Pattern**: Separation of business logic from UI components
+- **Event Bus System**: Thread-safe message distribution across components
+- **Modular Design**: Clean separation of concerns with well-organized directory structure
+
+## 🚀 Quick Start
 
 ### Prerequisites
 
-- Rust (latest stable version)
-- Cargo
+- **Rust**: 1.75 or later (install from [rustup.rs](https://rustup.rs/))
+- **Git**: For cloning the repository
 
-### Building from Source
+### Installation
 
-1. Clone the repository:
 ```bash
-git clone https://github.com/sxhxliang/agent-studio.git
-cd agent-studio
-```
+# Clone the repository
+git clone https://github.com/sxhxliang/gpui-component.git
+cd gpui-component/examples/agentx
 
-2. Build the application:
-```bash
-cargo build --release
-```
-
-3. Run the application:
-```bash
+# Run the application
 cargo run
+
+# Or run with logging enabled
+RUST_LOG=info cargo run
 ```
 
-## Usage
+### Build Options
 
-The application can be configured using a configuration file. By default, it looks for `config.json` in the project root directory. You can specify a custom config path using command line arguments.
+```bash
+# Development build
+cargo build
 
-The main interface includes:
-- Left panel: Code editor with LSP features
-- Right panel: Conversation history and chat input
-- Bottom panel: Task management and agent interactions
+# Release build (optimized)
+cargo build --release
 
-## Project Structure
+# Check for compilation errors
+cargo check
 
-```
-src/
-├── acp_client.rs          # Agent Client Protocol client
-├── app/                   # Application-level components
-│   ├── app_state.rs       # Global application state
-│   └── ...                # Menu, themes, title bar
-├── chat_input.rs          # Chat input component
-├── code_editor.rs         # Code editor with LSP integration
-├── components/            # Reusable UI components
-│   ├── agent_message.rs   # Agent message display
-│   ├── user_message.rs    # User message display
-│   └── ...                # Other components
-├── conversation.rs        # Conversation management
-├── conversation_acp.rs    # ACP conversation handling
-├── dock_panel.rs          # Dock panel system
-├── settings_window.rs     # Settings window implementation
-├── task_list.rs           # Task list management
-├── task_turn_view.rs      # Task turn view component
-├── welcome_panel.rs       # Welcome panel
-├── workspace.rs           # Main workspace management
-└── ...                    # Other utility files
+# Run from workspace root
+cd ../.. && cargo run --example agentx
 ```
 
-## Configuration
+## 📖 Usage
 
-The application can be configured through a `config.json` file. Example configuration:
+### First Launch
+
+On first launch, AgentX displays a welcome panel. You can:
+1. Create a new conversation with an AI agent
+2. Explore the interface and dock layout
+3. Customize themes and settings
+
+### Interface Layout
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Title Bar (Custom) - Menu, Panel Controls              │
+├───────────┬─────────────────────────┬───────────────────┤
+│           │                         │                   │
+│   Left    │        Center           │      Right        │
+│   Dock    │      Dock Area          │      Dock         │
+│           │  (Conversation/Editor)  │  (Tasks/Tools)    │
+│           │                         │                   │
+├───────────┴─────────────────────────┴───────────────────┤
+│              Bottom Dock (Chat Input)                    │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Key Actions
+
+- **Add Panel**: Click the panel dropdown in title bar → Select panel type → Choose placement
+- **Send Message**: Type in chat input → Press Enter or click Send
+- **Switch Theme**: Menu Bar → Themes → Select theme/mode
+- **Toggle Panels**: Use View menu or panel visibility toggles
+
+### Keyboard Shortcuts
+
+- `Tab` / `Shift+Tab`: Navigate between panels
+- `Ctrl+Q` / `Cmd+Q`: Quit application
+- Additional shortcuts available in Menu Bar
+
+## ⚙️ Configuration
+
+### Agent Configuration
+
+Create a `config.json` file in the project root to configure AI agents:
 
 ```json
 {
   "agent_servers": [
     {
-      "name": "example-agent",
-      "url": "http://localhost:8080"
+      "name": "my-agent",
+      "command": "/path/to/agent/executable",
+      "args": ["--arg1", "value1", "--arg2"]
     }
   ]
 }
 ```
 
-## Dependencies
+**Configuration Fields:**
+- `name`: Agent identifier (used in UI)
+- `command`: Path to agent executable or command
+- `args`: Optional command-line arguments (array)
 
-- [gpui](https://github.com/zed-industries/zed): Zed's native GUI library
-- [gpui-component](https://github.com/sxhxliang/gpui-component): UI components library
-- [agent-client-protocol](https://crates.io/crates/agent-client-protocol): Agent communication protocol
-- [tokio](https://tokio.rs/): Async runtime
-- [serde](https://serde.rs/): Serialization framework
-- [lsp-types](https://crates.io/crates/lsp-types): Language Server Protocol types
+### Settings
 
-## License
+Customize the application through the Settings window (Menu → Settings):
 
-MIT License. See the [LICENSE](LICENSE) file for details.
+- **Theme**: Color scheme and light/dark mode
+- **Font**: Editor and UI font selection
+- **Locale**: Interface language
+- **Scrollbar**: Display mode (auto/always/never)
+- **Border Radius**: Component corner rounding
+
+## 🏛️ Architecture
+
+### Directory Structure
+
+```
+src/
+├── app/                      # Application-level modules
+│   ├── actions.rs           # Centralized action definitions
+│   ├── app_state.rs         # Global application state
+│   ├── menu.rs              # Menu system
+│   ├── themes.rs            # Theme management
+│   └── title_bar.rs         # Custom title bar
+│
+├── panels/                   # All panel implementations
+│   ├── dock_panel.rs        # DockPanel trait and container
+│   ├── conversation_acp/    # ACP-enabled conversation panel
+│   │   ├── panel.rs         # Main panel logic
+│   │   ├── types.rs         # Reusable types
+│   │   └── mod.rs
+│   ├── code_editor/         # Code editor with LSP
+│   ├── task_list/           # Task management panel
+│   ├── chat_input.rs        # Chat input panel
+│   ├── welcome_panel.rs     # Welcome screen
+│   └── settings_window.rs   # Settings UI
+│
+├── core/                     # Core infrastructure
+│   ├── agent/               # Agent client management
+│   │   ├── client.rs        # AgentManager, AgentHandle
+│   │   └── mod.rs
+│   ├── event_bus/           # Event distribution system
+│   │   ├── session_bus.rs   # Session updates
+│   │   ├── permission_bus.rs# Permission requests
+│   │   └── mod.rs
+│   ├── services/            # Business logic services
+│   │   ├── agent_service.rs # Agent/session management
+│   │   ├── message_service.rs# Message handling
+│   │   └── mod.rs
+│   └── config.rs            # Configuration types
+│
+├── components/               # Reusable UI components
+│   ├── agent_message.rs     # AI message display
+│   ├── user_message.rs      # User message display
+│   ├── tool_call_item.rs    # Tool call visualization
+│   ├── agent_todo_list.rs   # Todo list component
+│   └── ...
+│
+├── workspace/                # Workspace management
+│   ├── mod.rs               # DockWorkspace implementation
+│   └── actions.rs           # Workspace actions
+│
+├── schemas/                  # Data models
+├── utils/                    # Utility functions
+├── lib.rs                    # Library entry point
+└── main.rs                   # Application entry point
+```
+
+### Key Design Patterns
+
+#### 1. Service Layer Pattern
+
+Business logic is separated from UI through dedicated services:
+
+```rust
+// Send a message to an agent
+let message_service = AppState::global(cx).message_service()?;
+message_service.send_user_message(&agent_name, message).await?;
+
+// Subscribe to session updates
+let mut rx = message_service.subscribe_session_updates(Some(session_id));
+```
+
+#### 2. Event Bus Architecture
+
+Real-time updates through publish-subscribe pattern:
+
+```
+User Input → ChatInput
+  ├─→ Immediate publish to session_bus
+  │    └─→ ConversationPanel receives instantly
+  └─→ agent_handle.prompt()
+       └─→ Agent processes
+            └─→ GuiClient.session_notification()
+                 └─→ session_bus.publish()
+                      └─→ Real-time UI update
+```
+
+#### 3. DockPanel Trait
+
+Unified interface for all dockable panels:
+
+```rust
+pub trait DockPanel: 'static + Sized {
+    fn title() -> &'static str;
+    fn description() -> &'static str;
+    fn new_view(window: &mut Window, cx: &mut App) -> Entity<impl Render>;
+    // Optional: closable(), zoomable(), title_bg(), paddings()
+}
+```
+
+## 🛠️ Development
+
+### Running Tests
+
+```bash
+# Run all tests
+cargo test
+
+# Run with logging
+RUST_LOG=debug cargo test
+```
+
+### Development Logging
+
+Control log verbosity with `RUST_LOG`:
+
+```bash
+# General info logging
+RUST_LOG=info cargo run
+
+# Debug specific modules
+RUST_LOG=info,agentx::core::services=debug cargo run
+RUST_LOG=info,agentx::panels::conversation_acp=debug cargo run
+
+# Trace all component updates
+RUST_LOG=trace cargo run
+```
+
+### Performance Profiling (macOS)
+
+```bash
+# Enable Metal HUD for FPS/GPU metrics
+MTL_HUD_ENABLED=1 cargo run
+
+# Profile with samply
+cargo install samply
+samply record cargo run --release
+```
+
+### Adding a New Panel
+
+1. Create panel file in `src/panels/`:
+```rust
+// src/panels/my_panel.rs
+use gpui::*;
+use crate::panels::dock_panel::DockPanel;
+
+pub struct MyPanel {
+    focus_handle: FocusHandle,
+}
+
+impl DockPanel for MyPanel {
+    fn title() -> &'static str { "My Panel" }
+    fn description() -> &'static str { "Panel description" }
+    fn new_view(window: &mut Window, cx: &mut App) -> Entity<impl Render> {
+        cx.new(|cx| Self::new(window, cx))
+    }
+}
+```
+
+2. Register in `src/lib.rs` and add to default layout in `src/workspace/mod.rs`
+
+3. Export from `src/panels/mod.rs`
+
+See [CLAUDE.md](CLAUDE.md) for detailed development guidelines.
+
+## 📦 Dependencies
+
+### Core Framework
+- **gpui** `0.2.2` - Core GPUI framework for UI rendering
+- **gpui-component** - UI component library (workspace member)
+- **gpui-component-assets** - Asset integration
+
+### Agent Communication
+- **agent-client-protocol** `0.8.0` - ACP protocol implementation
+- **tokio** `1.48.0` - Async runtime for agent processes
+- **tokio-util** `0.7.17` - Tokio utilities
+
+### Language Support
+- **tree-sitter-navi** `0.2.2` - Syntax highlighting
+- **lsp-types** - Language Server Protocol types
+- **color-lsp** `0.2.0` - LSP for color support
+
+### Utilities
+- **serde**, **serde_json** - Serialization/deserialization
+- **uuid** `1.11` - Unique identifier generation
+- **chrono** `0.4` - Date/time handling
+- **tracing**, **tracing-subscriber** - Logging
+
+See [Cargo.toml](Cargo.toml) for complete dependency list.
+
+## 🗂️ Data Storage
+
+AgentX stores runtime data in the `target/` directory:
+
+- `target/docks-agentx.json` - Layout state (debug builds)
+- `target/sessions/*.jsonl` - Session history (JSONL format)
+- `target/state.json` - Application state
+- `target/workspace-config.json` - Workspace configuration
+
+**Note**: In release builds, files are stored in the project root without `target/` prefix.
+
+## 🤝 Contributing
+
+Contributions are welcome! Please follow these guidelines:
+
+1. **Code Style**: Follow existing patterns (see [CLAUDE.md](CLAUDE.md))
+2. **Documentation**: Update relevant docs when adding features
+3. **Testing**: Ensure tests pass before submitting PRs
+4. **Commit Messages**: Use clear, descriptive commit messages
+
+### Development Workflow
+
+```bash
+# Create a feature branch
+git checkout -b feature/my-feature
+
+# Make changes and test
+cargo test
+cargo run
+
+# Commit and push
+git commit -m "feat: add my feature"
+git push origin feature/my-feature
+```
+
+## 📝 Documentation
+
+- **[CLAUDE.md](CLAUDE.md)** - Comprehensive development guide for Claude Code
+- **[Workspace Documentation](../../README.md)** - GPUI Component workspace overview
+- **[Component Gallery](../../crates/story/README.md)** - UI component examples
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+**Issue**: Application fails to start
+- **Solution**: Check `config.json` is valid JSON and agent paths are correct
+
+**Issue**: Agent not responding
+- **Solution**: Verify agent executable is accessible and has execute permissions
+
+**Issue**: Layout not saving
+- **Solution**: Ensure `target/` directory has write permissions
+
+**Issue**: LSP features not working
+- **Solution**: Check language server is installed and configured
+
+### Debug Mode
+
+Run with full debug logging:
+```bash
+RUST_LOG=debug cargo run 2>&1 | tee debug.log
+```
+
+## 📄 License
+
+This project is licensed under the **MIT License**. See [LICENSE](../../LICENSE) for details.
+
+## 🙏 Acknowledgments
+
+- **[GPUI](https://www.gpui.rs/)** - Zed's native GPU-accelerated UI framework
+- **[Zed](https://zed.dev/)** - Inspiration for editor features and architecture
+- **Agent Client Protocol** - Standard protocol for agent communication
+
+## 🔗 Links
+
+- **Repository**: [github.com/sxhxliang/gpui-component](https://github.com/sxhxliang/gpui-component)
+- **Issues**: [github.com/sxhxliang/gpui-component/issues](https://github.com/sxhxliang/gpui-component/issues)
+- **GPUI Component Docs**: [gpui-component documentation](https://github.com/sxhxliang/gpui-component)
+
+---
+
+**Built with ❤️ using [GPUI Component](https://github.com/sxhxliang/gpui-component)**

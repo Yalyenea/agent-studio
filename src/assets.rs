@@ -60,7 +60,7 @@ impl IconNamed for Icon {
             Icon::FolderSync => "icons2/folder-sync.svg",
             Icon::Monitor => "icons2/monitor.svg",
             Icon::Trash2 => "icons2/trash-2.svg",
-            Icon::SquarePause => "icons2/square-pause",
+            Icon::SquarePause => "icons2/square-pause.svg",
         }
         .into()
     }
