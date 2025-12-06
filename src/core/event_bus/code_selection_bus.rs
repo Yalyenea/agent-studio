@@ -1,5 +1,7 @@
 use std::sync::{Arc, Mutex};
 
+use gpui::{App, Context, Entity, WeakEntity};
+
 use crate::app::actions::AddCodeSelection;
 
 /// Event published when code is selected in the editor
@@ -51,6 +53,79 @@ impl CodeSelectionBus {
 
 /// Thread-safe container for CodeSelectionBus
 pub type CodeSelectionBusContainer = Arc<Mutex<CodeSelectionBus>>;
+
+/// Helper function to subscribe a panel entity to code selection events
+/// This reduces boilerplate by encapsulating the channel + background task pattern
+///
+/// # Arguments
+/// * `entity` - The panel entity that will receive code selections
+/// * `bus_container` - The global CodeSelectionBus container
+/// * `panel_name` - Name for logging (e.g., "WelcomePanel", "ConversationPanel")
+/// * `on_selection` - Callback to handle the code selection (receives mutable reference to panel)
+/// * `cx` - GPUI App context
+///
+/// # Example
+/// ```
+/// subscribe_entity_to_code_selections(
+///     &entity,
+///     bus_container,
+///     "MyPanel",
+///     |panel, selection, cx| {
+///         panel.code_selections.push(selection);
+///         cx.notify();
+///     },
+///     cx
+/// );
+/// ```
+pub fn subscribe_entity_to_code_selections<T, F>(
+    entity: &Entity<T>,
+    bus_container: CodeSelectionBusContainer,
+    panel_name: &'static str,
+    on_selection: F,
+    cx: &mut App,
+) where
+    T: 'static,
+    F: Fn(&mut T, AddCodeSelection, &mut Context<T>) + 'static,
+{
+    let weak_entity = entity.downgrade();
+
+    // Create unbounded channel for cross-thread communication
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<CodeSelectionEvent>();
+
+    if let Ok(mut bus) = bus_container.lock() {
+        log::info!("[{}] Subscribing to CodeSelectionBus", panel_name);
+
+        bus.subscribe(move |event| {
+            log::debug!(
+                "[{}] Received selection: {}:{}~{}",
+                panel_name,
+                event.selection.file_path,
+                event.selection.start_line,
+                event.selection.end_line
+            );
+            let _ = tx.send(event.clone());
+        });
+    } else {
+        log::error!("[{}] Failed to lock CodeSelectionBus", panel_name);
+        return;
+    }
+
+    // Spawn background task
+    cx.spawn(async move |cx| {
+        while let Some(event) = rx.recv().await {
+            if let Some(entity) = weak_entity.upgrade() {
+                let _ = cx.update(|cx| {
+                    entity.update(cx, |panel, cx| {
+                        on_selection(panel, event.selection.clone(), cx);
+                    });
+                });
+            } else {
+                break;
+            }
+        }
+    })
+    .detach();
+}
 
 #[cfg(test)]
 mod tests {

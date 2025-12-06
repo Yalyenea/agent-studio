@@ -159,75 +159,17 @@ impl WelcomePanel {
     ) -> Entity<Self> {
         let entity = cx.new(|cx| Self::new(workspace_id.clone(), window, cx));
 
-        // Subscribe to CodeSelectionBus using channel for cross-thread communication
-        let code_selection_bus = AppState::global(cx).code_selection_bus.clone();
-        let weak_entity = entity.downgrade();
-
-        // Create unbounded channel for cross-thread communication
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<
-            crate::core::event_bus::CodeSelectionEvent,
-        >();
-
-        if let Ok(mut bus) = code_selection_bus.lock() {
-            log::info!("[WelcomePanel] Subscribing to CodeSelectionBus with channel");
-
-            bus.subscribe(move |event| {
-                log::info!(
-                    "[WelcomePanel] CodeSelectionBus callback - file: {}, lines: {}~{}, sending to channel",
-                    event.selection.file_path,
-                    event.selection.start_line,
-                    event.selection.end_line
-                );
-
-                // Send event to channel (runs in event bus thread)
-                let _ = tx.send(event.clone());
-            });
-
-            log::info!("[WelcomePanel] Successfully subscribed to CodeSelectionBus");
-        } else {
-            log::error!("[WelcomePanel] Failed to lock CodeSelectionBus for subscription");
-        }
-
-        // Spawn background task to receive from channel and update entity
-        cx.spawn(async move |cx| {
-            log::info!("[WelcomePanel] Starting CodeSelection background task");
-
-            while let Some(event) = rx.recv().await {
-                log::info!(
-                    "[WelcomePanel] Channel received event - file: {}, lines: {}~{}",
-                    event.selection.file_path,
-                    event.selection.start_line,
-                    event.selection.end_line
-                );
-
-                // Update entity in GPUI context
-                if let Some(entity) = weak_entity.upgrade() {
-                    let _ = cx.update(|cx| {
-                        entity.update(cx, |this, cx| {
-                            log::info!(
-                                "[WelcomePanel] Adding code selection to list (current count: {})",
-                                this.code_selections.len()
-                            );
-
-                            this.code_selections.push(event.selection.clone());
-
-                            log::info!(
-                                "[WelcomePanel] Code selection added (new count: {})",
-                                this.code_selections.len()
-                            );
-
-                            cx.notify();
-                        });
-                    });
-                } else {
-                    log::debug!("[WelcomePanel] Entity dropped, stopping background task");
-                    break;
-                }
-            }
-
-            log::info!("[WelcomePanel] CodeSelection background task ended");
-        })
-        .detach();
+        // Subscribe to CodeSelectionBus using the shared helper function
+        crate::core::event_bus::subscribe_entity_to_code_selections(
+            &entity,
+            AppState::global(cx).code_selection_bus.clone(),
+            "WelcomePanel",
+            |panel, selection, cx| {
+                panel.code_selections.push(selection);
+                cx.notify();
+            },
+            cx,
+        );
 
         // Subscribe to agent_select focus to refresh agents list when no agents available
         entity.update(cx, |this, cx| {
@@ -721,51 +663,6 @@ impl WelcomePanel {
             }
         }
         handled
-    }
-
-    /// Handle AddCodeSelection action - add code selection to the list
-    fn handle_add_code_selection(
-        &mut self,
-        action: &AddCodeSelection,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        log::info!(
-            "[WelcomePanel] ========== RECEIVED AddCodeSelection action =========="
-        );
-        log::info!(
-            "[WelcomePanel] File: {}, Lines: {}:{} ~ {}:{}, Content length: {}",
-            action.file_path,
-            action.start_line,
-            action.start_column,
-            action.end_line,
-            action.end_column,
-            action.content.len()
-        );
-        log::info!(
-            "[WelcomePanel] Current code_selections count BEFORE adding: {}",
-            self.code_selections.len()
-        );
-
-        // Add the code selection to our list
-        self.code_selections.push(AddCodeSelection {
-            file_path: action.file_path.clone(),
-            start_line: action.start_line,
-            start_column: action.start_column,
-            end_line: action.end_line,
-            end_column: action.end_column,
-            content: action.content.clone(),
-        });
-
-        log::info!(
-            "[WelcomePanel] Current code_selections count AFTER adding: {}",
-            self.code_selections.len()
-        );
-        log::info!("[WelcomePanel] Calling cx.notify() to trigger re-render");
-
-        cx.notify();
-
-        log::info!("[WelcomePanel] ========== AddCodeSelection handled ==========");
     }
 }
 

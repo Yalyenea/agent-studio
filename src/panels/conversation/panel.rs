@@ -385,76 +385,16 @@ impl ConversationPanel {
 
     /// Subscribe to CodeSelectionBus to receive code selection events
     pub fn subscribe_to_code_selections(entity: &Entity<Self>, cx: &mut App) {
-        let weak_entity = entity.downgrade();
-        let code_selection_bus = AppState::global(cx).code_selection_bus.clone();
-
-        // Create unbounded channel for cross-thread communication
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<
-            crate::core::event_bus::CodeSelectionEvent,
-        >();
-
-        if let Ok(mut bus) = code_selection_bus.lock() {
-            log::info!("[ConversationPanel] Subscribing to CodeSelectionBus with channel");
-
-            bus.subscribe(move |event| {
-                log::info!(
-                    "[ConversationPanel] CodeSelectionBus callback - file: {}, lines: {}~{}, sending to channel",
-                    event.selection.file_path,
-                    event.selection.start_line,
-                    event.selection.end_line
-                );
-
-                // Send event to channel (runs in event bus thread)
-                let _ = tx.send(event.clone());
-            });
-
-            log::info!("[ConversationPanel] Successfully subscribed to CodeSelectionBus");
-        } else {
-            log::error!("[ConversationPanel] Failed to lock CodeSelectionBus for subscription");
-        }
-
-        // Spawn background task to receive from channel and update entity
-        cx.spawn(async move |cx| {
-            log::info!("[ConversationPanel] Starting CodeSelection background task");
-
-            while let Some(event) = rx.recv().await {
-                log::info!(
-                    "[ConversationPanel] Channel received event - file: {}, lines: {}~{}",
-                    event.selection.file_path,
-                    event.selection.start_line,
-                    event.selection.end_line
-                );
-
-                // Update entity in GPUI context
-                if let Some(entity) = weak_entity.upgrade() {
-                    let _ = cx.update(|cx| {
-                        entity.update(cx, |this, cx| {
-                            log::info!(
-                                "[ConversationPanel] Adding code selection to list (current count: {})",
-                                this.code_selections.len()
-                            );
-
-                            this.code_selections.push(event.selection.clone());
-
-                            log::info!(
-                                "[ConversationPanel] Code selection added (new count: {})",
-                                this.code_selections.len()
-                            );
-
-                            cx.notify();
-                        });
-                    });
-                } else {
-                    log::debug!("[ConversationPanel] Entity dropped, stopping background task");
-                    break;
-                }
-            }
-
-            log::info!("[ConversationPanel] CodeSelection background task ended");
-        })
-        .detach();
-
-        log::info!("[ConversationPanel] Subscribed to CodeSelectionBus");
+        crate::core::event_bus::subscribe_entity_to_code_selections(
+            entity,
+            AppState::global(cx).code_selection_bus.clone(),
+            "ConversationPanel",
+            |panel, selection, cx| {
+                panel.code_selections.push(selection);
+                cx.notify();
+            },
+            cx,
+        );
     }
 
     /// Helper to add an update to the rendered items list
