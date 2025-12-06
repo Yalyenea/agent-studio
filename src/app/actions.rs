@@ -3,6 +3,7 @@
 //! 本模块集中管理所有应用中使用的 GPUI Actions，便于维护和查找。
 //! Actions 是 GPUI 中用于触发用户操作的类型安全机制。
 
+use agent_client_protocol_schema::ToolCall;
 use gpui::{actions, Action, SharedString};
 use gpui_component::{dock::DockPlacement, scroll::ScrollbarShow, ThemeMode};
 use serde::Deserialize;
@@ -24,6 +25,20 @@ pub struct AddPanel(pub DockPlacement);
 #[derive(Action, Clone, PartialEq, Eq, Deserialize)]
 #[action(namespace = story, no_json)]
 pub struct TogglePanelVisible(pub SharedString);
+
+/// 添加会话面板
+///
+/// 用于创建并添加一个新的会话面板到工作区
+#[derive(Action, Clone, PartialEq, Eq, Deserialize)]
+#[action(namespace = story, no_json)]
+pub struct AddToolCallDetailPanel {
+    /// 会话唯一标识符
+    pub session_id: String,
+    /// 面板放置位置，默认为 Center
+    #[serde(skip, default = "default_dock_placement")]
+    pub placement: DockPlacement,
+}
+
 
 /// 添加会话面板
 ///
@@ -184,6 +199,17 @@ impl ShowConversationPanel {
     pub fn new() -> Self {
         Self { session_id: None }
     }
+}
+
+/// 显示工具调用详情面板
+///
+/// 用于在右侧显示完整的工具调用内容
+#[derive(Action, Clone, PartialEq, Deserialize)]
+#[action(namespace = agentx, no_json)]
+pub struct ShowToolCallDetail {
+    /// The tool call ID to display
+    pub tool_call_id: String,
+    pub tool_call: ToolCall,
 }
 
 // ============================================================================

@@ -4,15 +4,10 @@ use rand;
 use std::sync::Arc;
 
 use crate::{
-    app::{
+    AddPanel, AppState, ConversationPanel, CreateTaskFromWelcome, NewSessionConversationPanel, SettingsPanel, ShowConversationPanel, ShowToolCallDetail, ShowWelcomePanel, ToggleDockToggleButton, TogglePanelVisible, ToolCallDetailPanel, WelcomePanel, app::{
         self,
         actions::{Paste, Submit},
-    },
-    panels::{dock_panel::DockPanelContainer, DockPanel},
-    title_bar::OpenSettings,
-    utils, AddPanel, AppState, ConversationPanel, CreateTaskFromWelcome,
-    NewSessionConversationPanel, SettingsPanel, ShowConversationPanel, ShowWelcomePanel,
-    ToggleDockToggleButton, TogglePanelVisible, WelcomePanel,
+    }, panels::{DockPanel, dock_panel::DockPanelContainer}, title_bar::OpenSettings, utils
 };
 
 use super::DockWorkspace;
@@ -239,6 +234,41 @@ impl DockWorkspace {
         });
     }
 
+    /// Handle ShowToolCallDetail action - display tool call detail panel in right dock
+    pub(super) fn on_action_show_tool_call_detail_panel(
+        &mut self,
+        action: &ShowToolCallDetail,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        log::debug!("on_action_show_tool_call_detail_panel called");
+
+        let panel = Arc::new(DockPanelContainer::panel_for_tool_call_detail(
+            action.tool_call.clone(),
+            window,
+            cx,
+        ));
+
+        self.dock_area.update(cx, |dock_area, cx| {
+            // Check if right dock is open BEFORE adding panel
+            let was_dock_open = dock_area.is_dock_open(DockPlacement::Right, cx);
+            log::debug!("Right dock open before add_panel: {}", was_dock_open);
+
+            // Add panel to right dock
+            dock_area.add_panel(panel, DockPlacement::Right, None, window, cx);
+
+            // Always ensure the right dock is open after adding panel
+            // If it was closed, toggle it to open it
+            if !was_dock_open {
+                dock_area.toggle_dock(DockPlacement::Right, window, cx);
+                log::debug!("Toggled right dock to open");
+            }
+
+            log::debug!("Added ToolCallDetail panel, right dock is now open: {}",
+                       dock_area.is_dock_open(DockPlacement::Right, cx));
+        });
+    }
+    
     /// Handle ShowConversationPanel action - display conversation panel
     pub(super) fn on_action_show_conversation_panel(
         &mut self,

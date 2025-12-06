@@ -17,7 +17,7 @@ mod test_mock_data;
 use crate::panels::{DockPanel, DockPanelContainer, DockPanelState};
 pub use panels::{
     CodeEditorPanel, ConversationPanel, SessionManagerPanel, SettingsPanel,
-    TaskPanel, WelcomePanel,
+    TaskPanel, ToolCallDetailPanel, WelcomePanel,
 };
 
 // Re-export from core module
@@ -37,8 +37,8 @@ pub use app::{
         About, AddPanel, AddSessionPanel, AddSessionToList, CloseWindow, CreateTaskFromWelcome,
         Info, NewSessionConversationPanel, Open, Quit, SelectFont, SelectLocale, SelectRadius,
         SelectScrollbarShow, SelectedAgentTask, ShowConversationPanel, ShowPanelInfo,
-        ShowWelcomePanel, Tab, TabPrev, TestAction, ToggleDockToggleButton, TogglePanelVisible,
-        ToggleSearch,
+        ShowToolCallDetail, ShowWelcomePanel, Tab, TabPrev, TestAction, ToggleDockToggleButton,
+        TogglePanelVisible, ToggleSearch,
     },
     app_menus, menu, themes, title_bar,
 };
@@ -275,6 +275,7 @@ fn create_panel_view(
         "SessionManagerPanel" => story!(SessionManagerPanel),
         "WelcomePanel" => story!(WelcomePanel),
         "SettingsPanel" => story!(SettingsPanel),
+        "ToolCallDetailPanel" => story!(ToolCallDetailPanel),
         _ => {
             unreachable!("Invalid story klass: {}", story_klass)
         }

@@ -1,5 +1,5 @@
 use gpui::{
-    div, prelude::*, px, App, ClipboardEntry, Context, ElementId, Entity, FocusHandle, Focusable,
+    div, prelude::*, px, App, ClipboardEntry, Context, Div, ElementId, Entity, FocusHandle, Focusable,
     InteractiveElement, IntoElement, ParentElement, Render, ScrollHandle, SharedString,
     StatefulInteractiveElement, Styled, Window,
 };
@@ -19,13 +19,66 @@ use agent_client_protocol_schema::{
 };
 
 use crate::{
-    components::PastedImage, core::agent::AgentHandle, panels::dock_panel::DockPanel, AgentMessage,
-    AgentMessageData, AgentTodoList, AppState, ChatInputBox, PermissionRequestView,
-    UserMessageData,
+    AgentMessage, AgentMessageData, AgentTodoList, AppState, ChatInputBox, PermissionRequestView, ShowToolCallDetail, UserMessageData, components::PastedImage, core::agent::AgentHandle, panels::dock_panel::DockPanel
 };
 
 // Import from types module
 use super::types::{get_file_icon, ResourceInfo, ToolCallStatusExt, ToolKindExt};
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Extract text content from XML-like tags using regex based on ToolKind
+/// For example: "```\n<tool_use_error>File does not exist.</tool_use_error>\n```"
+/// Returns: "File does not exist."
+/// 
+/// This function decides whether to extract XML content based on the tool type:
+/// - For Execute, Other, and similar types: Extract XML content
+/// - For other types: Return original text
+fn extract_xml_content(text: &str, tool_kind: &agent_client_protocol_schema::ToolKind) -> String {
+    use regex::Regex;
+    
+    // Decide whether to extract XML based on tool kind
+    let should_extract = matches!(
+        tool_kind,
+        agent_client_protocol_schema::ToolKind::Execute 
+        | agent_client_protocol_schema::ToolKind::Other
+        | agent_client_protocol_schema::ToolKind::Read
+    );
+    
+    if !should_extract {
+        // For other tool types, return the text as-is (just strip code fences)
+        return text.trim_start_matches("```")
+            .trim_end_matches("```")
+            .trim()
+            .to_string();
+    }
+    
+    // Pattern to match XML-like tags: <tag_name>content</tag_name>
+    // This captures the content between any XML tags
+    let re = Regex::new(r"<[^>]+>([^<]*)</[^>]+>").unwrap();
+    
+    let mut result = String::new();
+    for cap in re.captures_iter(text) {
+        if let Some(content) = cap.get(1) {
+            if !result.is_empty() {
+                result.push('\n');
+            }
+            result.push_str(content.as_str());
+        }
+    }
+    
+    // If no XML tags found, return the original text (stripped of markdown code fences)
+    if result.is_empty() {
+        text.trim_start_matches("```")
+            .trim_end_matches("```")
+            .trim()
+            .to_string()
+    } else {
+        result
+    }
+}
 
 // ============================================================================
 // Stateful Resource Item
@@ -191,6 +244,52 @@ impl ToolCallItemState {
     fn tool_call_id(&self) -> &agent_client_protocol_schema::ToolCallId {
         &self.tool_call.tool_call_id
     }
+    /// Get formatted display title for the tool call
+    /// For Read tools, formats as: filename#L<offset>-<offset+limit>
+    /// For other tools, returns the original title
+    fn get_display_title(&self) -> String {
+        use agent_client_protocol_schema::ToolKind;
+        use std::path::Path;
+
+        // Only format Read tool calls
+        if !matches!(self.tool_call.kind, ToolKind::Read) {
+            return self.tool_call.title.clone();
+        }
+
+        // Try to extract file information from locations
+        if let Some(first_location) = self.tool_call.locations.first() {
+            // Extract filename from path
+            let filename = first_location
+                .path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("file");
+
+            // Try to get line range from raw_input (which contains offset and limit)
+            if let Some(raw_input) = self.tool_call.raw_input.as_ref() {
+                // raw_input is a serde_json::Value, so we need to parse it as an object
+                if let Some(raw_obj) = raw_input.as_object() {
+                    let offset = raw_obj
+                        .get("offset")
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or(1);
+                    let limit = raw_obj
+                        .get("limit")
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or(100);
+                    
+                    let end_line = offset + limit - 1;
+                    return format!("Read ({}#L{}-L{})", filename, offset, end_line);
+                }
+            }
+
+            // If we have location but no line info, just return filename  
+            return format!("{}", filename);
+        }
+
+        // Fallback to original title
+        self.tool_call.title.clone()
+    }
 }
 
 impl Render for ToolCallItemState {
@@ -205,7 +304,7 @@ impl Render for ToolCallItemState {
 
         let open = self.open;
         let tool_call_id = self.tool_call.tool_call_id.clone();
-        let title = self.tool_call.title.clone();
+        let title = self.get_display_title(); // Use formatted title
         let kind_icon = self.tool_call.kind.icon();
         let status_icon = self.tool_call.status.icon();
 
@@ -238,63 +337,94 @@ impl Render for ToolCallItemState {
                             .text_color(status_color),
                     )
                     .when(has_content, |this| {
+                        let tool_call_clone_for_detail = self.tool_call.clone();
                         this.child(
-                            Button::new(SharedString::from(format!(
-                                "tool-call-{}-toggle",
-                                tool_call_id
-                            )))
-                            .icon(if open {
-                                IconName::ChevronUp
-                            } else {
-                                IconName::ChevronDown
-                            })
-                            .ghost()
-                            .xsmall()
-                            .on_click(cx.listener(
-                                |this, _ev, _window, cx| {
-                                    this.toggle(cx);
-                                },
-                            )),
+                            h_flex()
+                                .gap_2()
+                                .child(
+                                    Button::new(SharedString::from(format!(
+                                        "tool-call-{}-toggle",
+                                        tool_call_id
+                                    )))
+                                    .icon(if open {
+                                        IconName::ChevronUp
+                                    } else {
+                                        IconName::ChevronDown
+                                    })
+                                    .ghost()
+                                    .xsmall()
+                                    .on_click(cx.listener(|this, _ev, _window, cx| {
+                                        this.toggle(cx);
+                                    })),
+                                )
+                                .child(
+                                    Button::new(SharedString::from(format!(
+                                        "tool-call-{}-detail",
+                                        tool_call_id
+                                    )))
+                                    .icon(IconName::Info)
+                                    .ghost()
+                                    .xsmall()
+                                    .on_click(cx.listener(move |_, _ev, window, cx| {
+                                        // Dispatch ShowToolCallDetail action
+                                        let action = ShowToolCallDetail {
+                                            tool_call_id: tool_call_id.to_string(),
+                                            tool_call: tool_call_clone_for_detail.clone(),
+                                        };
+                                        log::debug!("Dispatching ShowToolCallDetail action from ConversationPanel");
+                                        window.dispatch_action(Box::new(action), cx);
+                                    })),
+                                ),
                         )
                     }),
             )
             .when(has_content, |this| {
-                this.content(v_flex().gap_1().p_3().pl_8().children(
-                    self.tool_call.content.iter().filter_map(|content| {
-                        match content {
-                            ToolCallContent::Content(c) => match &c.content {
-                                ContentBlock::Text(text) => Some(
+                this.content(
+                    v_flex()
+                        .gap_1()
+                        .p_3()
+                        .pl_8()
+                        .children(self.tool_call.content.iter().filter_map(|content| {
+                            match content {
+                                ToolCallContent::Content(c) => match &c.content {
+                                    ContentBlock::Text(text) => {
+                                        let cleaned_text =
+                                            extract_xml_content(&text.text, &self.tool_call.kind);
+                                        Some(
+                                            div()
+                                                .text_size(px(12.))
+                                                .text_color(cx.theme().muted_foreground)
+                                                .line_height(px(18.))
+                                                .child(cleaned_text),
+                                        )
+                                    }
+                                    _ => None,
+                                },
+                                ToolCallContent::Diff(diff) => Some(
                                     div()
                                         .text_size(px(12.))
                                         .text_color(cx.theme().muted_foreground)
                                         .line_height(px(18.))
-                                        .child(text.text.clone()),
+                                        .child(format!(
+                                            "Modified: {}\n{} -> {}",
+                                            diff.path.display(),
+                                            diff.old_text.as_deref().unwrap_or("<new file>"),
+                                            diff.new_text
+                                        )),
+                                ),
+                                ToolCallContent::Terminal(terminal) => Some(
+                                    div()
+                                        .text_size(px(12.))
+                                        .text_color(cx.theme().muted_foreground)
+                                        .line_height(px(18.))
+                                        .child(format!("Terminal: {}", terminal.terminal_id)),
                                 ),
                                 _ => None,
-                            },
-                            ToolCallContent::Diff(diff) => Some(
-                                div()
-                                    .text_size(px(12.))
-                                    .text_color(cx.theme().muted_foreground)
-                                    .line_height(px(18.))
-                                    .child(format!(
-                                        "Modified: {}\n{} -> {}",
-                                        diff.path.display(),
-                                        diff.old_text.as_deref().unwrap_or("<new file>"),
-                                        diff.new_text
-                                    )),
-                            ),
-                            ToolCallContent::Terminal(terminal) => Some(
-                                div()
-                                    .text_size(px(12.))
-                                    .text_color(cx.theme().muted_foreground)
-                                    .line_height(px(18.))
-                                    .child(format!("Terminal: {}", terminal.terminal_id)),
-                            ),
-                            _ => None,
-                        }
-                    }),
-                ))
+                            }
+                        })),
+                )
+                .max_h(px(180.)) // Max 10 lines (18px * 10)
+                .overflow_hidden()
             })
     }
 }
@@ -865,14 +995,47 @@ impl ConversationPanel {
                 }
             }
             SessionUpdate::ToolCall(tool_call) => {
-                // Mark last message as complete before adding ToolCall
-                if let Some(last_item) = items.last_mut() {
-                    last_item.mark_complete();
+                // Check if a ToolCall with this ID already exists
+                let mut found = false;
+                for item in items.iter_mut() {
+                    if let RenderedItem::ToolCall(entity) = item {
+                        let entity_clone = entity.clone();
+                        let matches = entity_clone.read(cx).tool_call_id() == &tool_call.tool_call_id;
+
+                        if matches {
+                            // Update the existing tool call by replacing it with the new data
+                            entity.update(cx, |state, cx| {
+                                log::debug!(
+                                    "  └─ Updating existing ToolCall: {} (title: {:?} -> {:?})",
+                                    tool_call.tool_call_id,
+                                    state.tool_call.title,
+                                    tool_call.title
+                                );
+                                // Replace the entire tool_call to get the latest data
+                                state.tool_call = tool_call.clone();
+                                // If there's content, open it
+                                if state.has_content() {
+                                    state.open = true;
+                                }
+                                cx.notify();
+                            });
+                            found = true;
+                            break;
+                        }
+                    }
                 }
 
-                log::debug!("  └─ Creating ToolCall: {}", tool_call.tool_call_id);
-                let entity = cx.new(|_| ToolCallItemState::new(tool_call, false));
-                items.push(RenderedItem::ToolCall(entity));
+                // If no existing ToolCall found, create a new one
+                if !found {
+                    // Mark last message as complete before adding ToolCall
+                    if let Some(last_item) = items.last_mut() {
+                        last_item.mark_complete();
+                    }
+
+                    log::debug!("  └─ Creating new ToolCall: {}", tool_call.tool_call_id);
+                    let entity = cx.new(|_| ToolCallItemState::new(tool_call, false));
+                    items.push(RenderedItem::ToolCall(entity));
+                }
             }
             SessionUpdate::ToolCallUpdate(tool_call_update) => {
                 log::debug!("  └─ Updating ToolCall: {}", tool_call_update.tool_call_id);
@@ -1078,7 +1241,7 @@ impl ConversationPanel {
                     let image = image.clone();
                     handled = true;
 
-                    cx.spawn_in(window, async move |this, mut cx| {
+                    cx.spawn_in(window, async move |this, cx| {
                         // Write image to temp file
                         match crate::utils::file::write_image_to_temp_file(&image).await {
                             Ok(temp_path) => {
@@ -1093,7 +1256,7 @@ impl ConversationPanel {
 
                                 // Add to pasted_images
                                 _ = cx.update(move |_window, cx| {
-                                    this.update(cx, |this, cx| {
+                                    let _ = this.update(cx, |this, cx| {
                                         this.pasted_images.push(PastedImage {
                                             path: temp_path,
                                             filename,

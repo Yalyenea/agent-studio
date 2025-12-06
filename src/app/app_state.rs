@@ -32,6 +32,8 @@ pub struct AppState {
     workspace_service: Option<Arc<WorkspaceService>>,
     /// Current working directory for the code editor
     current_working_dir: PathBuf,
+    /// Selected tool call for detail view
+    pub selected_tool_call: Entity<Option<agent_client_protocol_schema::ToolCall>>,
 }
 
 impl AppState {
@@ -65,6 +67,7 @@ impl AppState {
             message_service: None,
             workspace_service: Some(workspace_service),
             current_working_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            selected_tool_call: cx.new(|_| None),
         };
         cx.set_global::<AppState>(state);
     }

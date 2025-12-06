@@ -1,3 +1,4 @@
+use agent_client_protocol_schema::ToolCall;
 use gpui::{prelude::FluentBuilder, *};
 use gpui_component::{
     button::Button,
@@ -11,7 +12,7 @@ use gpui_component::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::AppState;
+use crate::{AppState, ToolCallDetailPanel};
 use crate::{ShowPanelInfo, ToggleSearch};
 use crate::panels::conversation::ConversationPanel;
 use crate::panels::welcome_panel::WelcomePanel;
@@ -217,6 +218,37 @@ impl DockPanelContainer {
         view
     }
 
+    pub fn panel_for_tool_call_detail(
+        tool_call: ToolCall,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Entity<Self> {
+
+        let name = ToolCallDetailPanel::title();
+        let description = ToolCallDetailPanel::description();
+        let mut story = ToolCallDetailPanel::new(window, cx);
+        let story_klass = ToolCallDetailPanel::klass();
+        story.set_tool_call(tool_call);
+
+        let entity = cx.new(|cx| story);
+        
+
+        let view = cx.new(|cx| {
+            let mut container = Self::new(cx)
+                .story(entity.into(), story_klass)
+                .on_active(ToolCallDetailPanel::on_active_any);
+            container.focus_handle = cx.focus_handle();
+            container.closable = ToolCallDetailPanel::closable();
+            container.zoomable = ToolCallDetailPanel::zoomable();
+            container.name = name.into();
+            container.description = description.into();
+            container.title_bg = ToolCallDetailPanel::title_bg();
+            container.paddings = ToolCallDetailPanel::paddings();
+            container
+        });
+
+        view
+    }
     /// Create a panel for a specific session (currently only supports ConversationPanel)
     /// This will load the conversation history for that session
     pub fn panel_for_session(
