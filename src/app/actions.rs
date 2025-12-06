@@ -169,7 +169,7 @@ pub struct NewSessionConversationPanel {
 /// 添加代码选择到聊天输入框
 ///
 /// 当用户在代码编辑器中选择代码并希望将其添加到聊天输入框时触发
-#[derive(Action, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize)]
 #[action(namespace = code_editor, no_json)]
 pub struct AddCodeSelection {
     /// 文件路径

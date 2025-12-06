@@ -461,18 +461,45 @@ impl CodeEditorPanel {
         // TODO: 在 CodeEditorPanel 中添加文件路径字段
         let file_path = "current_file.rs".to_string();
 
+        log::info!(
+            "[CodeEditorPanel] Creating AddCodeSelection action - file: {}, start: {}:{}, end: {}:{}, content length: {}",
+            file_path,
+            start_pos.line + 1,
+            start_pos.character + 1,
+            end_pos.line + 1,
+            end_pos.character + 1,
+            content.len()
+        );
+
         // 创建 action
         let action = crate::app::actions::AddCodeSelection {
-            file_path,
+            file_path: file_path.clone(),
             start_line: start_pos.line + 1,
             start_column: start_pos.character + 1,
             end_line: end_pos.line + 1,
             end_column: end_pos.character + 1,
-            content,
+            content: content.clone(),
         };
 
-        // 发布 action
-        window.dispatch_action(Box::new(action), cx);
+        // 发布到事件总线（替代 window.dispatch_action）
+        log::info!(
+            "[CodeEditorPanel] Publishing to CodeSelectionBus instead of dispatching action"
+        );
+
+        // Clone the bus container first to ensure it lives long enough
+        crate::AppState::global(cx)
+            .code_selection_bus
+            .clone()
+            .lock()
+            .map(|bus| {
+                bus.publish(crate::core::event_bus::CodeSelectionEvent {
+                    selection: action,
+                });
+                log::info!("[CodeEditorPanel] Event published successfully to CodeSelectionBus");
+            })
+            .unwrap_or_else(|_| {
+                log::error!("[CodeEditorPanel] Failed to lock CodeSelectionBus");
+            });
     }
 }
 

@@ -16,6 +16,8 @@ use gpui_component::{
 
 use agent_client_protocol::ImageContent;
 
+use crate::app::actions::AddCodeSelection;
+
 /// A reusable chat input component with context controls and send button.
 ///
 /// Features:
@@ -40,7 +42,9 @@ pub struct ChatInputBox {
     session_select: Option<Entity<SelectState<Vec<String>>>>,
     on_new_session: Option<Box<dyn Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static>>,
     pasted_images: Vec<(ImageContent, String)>, // (ImageContent, filename for display)
+    code_selections: Vec<AddCodeSelection>,     // Code selections from editor
     on_remove_image: Option<Rc<dyn Fn(&usize, &mut Window, &mut App) + 'static>>,
+    on_remove_code_selection: Option<Rc<dyn Fn(&usize, &mut Window, &mut App) + 'static>>,
     on_paste: Option<Rc<dyn Fn(&mut Window, &mut App) + 'static>>,
 }
 
@@ -61,7 +65,9 @@ impl ChatInputBox {
             session_select: None,
             on_new_session: None,
             pasted_images: Vec::new(),
+            code_selections: Vec::new(),
             on_remove_image: None,
+            on_remove_code_selection: None,
             on_paste: None,
         }
     }
@@ -157,10 +163,42 @@ impl ChatInputBox {
         self.on_paste = Some(Rc::new(callback));
         self
     }
+
+    /// Set the list of code selections
+    pub fn code_selections(mut self, selections: Vec<AddCodeSelection>) -> Self {
+        self.code_selections = selections;
+        self
+    }
+
+    /// Set a callback for when a code selection is removed
+    pub fn on_remove_code_selection<F>(mut self, callback: F) -> Self
+    where
+        F: Fn(&usize, &mut Window, &mut App) + 'static,
+    {
+        self.on_remove_code_selection = Some(Rc::new(callback));
+        self
+    }
 }
 
 impl RenderOnce for ChatInputBox {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        log::debug!(
+            "[ChatInputBox::render] Rendering with {} code_selections and {} pasted_images",
+            self.code_selections.len(),
+            self.pasted_images.len()
+        );
+
+        // Log code selections details
+        for (idx, selection) in self.code_selections.iter().enumerate() {
+            log::debug!(
+                "[ChatInputBox::render] Code selection {}: {}:{}~{}",
+                idx,
+                selection.file_path,
+                selection.start_line,
+                selection.end_line
+            );
+        }
+
         let theme = cx.theme();
         let on_send = self.on_send;
         let on_new_session = self.on_new_session;
@@ -255,11 +293,12 @@ impl RenderOnce for ChatInputBox {
                         })
                     })
                     .child(
-                        // Top row: Pasted images (if any) and Add context button with popover
+                        // Top row: Pasted images, code selections, and Add context button with popover
                         h_flex()
                             .w_full()
                             .gap_2()
                             .items_center()
+                            // Render pasted images
                             .children(self.pasted_images.iter().enumerate().map(
                                 |(idx, (_image, filename))| {
                                     let on_remove = self.on_remove_image.clone();
@@ -287,6 +326,62 @@ impl RenderOnce for ChatInputBox {
                                         )
                                         .child(
                                             Button::new(("remove-image", idx))
+                                                .icon(Icon::new(IconName::Close))
+                                                .ghost()
+                                                .xsmall()
+                                                .when_some(on_remove, |btn, callback| {
+                                                    btn.on_click(move |_ev, window, cx| {
+                                                        callback(&idx_clone, window, cx);
+                                                    })
+                                                }),
+                                        )
+                                        .into_any_element()
+                                },
+                            ))
+                            // Render code selections
+                            .children(self.code_selections.iter().enumerate().map(
+                                |(idx, selection)| {
+                                    let on_remove = self.on_remove_code_selection.clone();
+                                    let idx_clone = idx;
+
+                                    // Extract filename from path
+                                    let filename = std::path::Path::new(&selection.file_path)
+                                        .file_name()
+                                        .and_then(|n| n.to_str())
+                                        .unwrap_or(&selection.file_path);
+
+                                    // Format the display text as "filename:start_line~end_line"
+                                    let display_text = if selection.start_line == selection.end_line {
+                                        format!("{}:{}", filename, selection.start_line)
+                                    } else {
+                                        format!(
+                                            "{}:{}~{}",
+                                            filename, selection.start_line, selection.end_line
+                                        )
+                                    };
+
+                                    h_flex()
+                                        .gap_1()
+                                        .items_center()
+                                        .p_1()
+                                        .px_2()
+                                        .rounded(theme.radius)
+                                        .bg(theme.muted)
+                                        .border_1()
+                                        .border_color(theme.border)
+                                        .child(
+                                            Icon::new(IconName::Frame)
+                                                .size(px(14.))
+                                                .text_color(theme.accent),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_size(px(12.))
+                                                .text_color(theme.foreground)
+                                                .child(display_text),
+                                        )
+                                        .child(
+                                            Button::new(("remove-code-selection", idx))
                                                 .icon(Icon::new(IconName::Close))
                                                 .ghost()
                                                 .xsmall()

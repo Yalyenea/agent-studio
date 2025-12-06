@@ -5,7 +5,8 @@ use std::sync::Arc;
 use crate::{
     core::agent::{AgentManager, PermissionStore},
     core::event_bus::{
-        PermissionBusContainer, SessionUpdateBusContainer, WorkspaceUpdateBusContainer,
+        CodeSelectionBusContainer, PermissionBusContainer, SessionUpdateBusContainer,
+        WorkspaceUpdateBusContainer,
     },
     core::services::{AgentService, MessageService, PersistenceService, WorkspaceService},
 };
@@ -24,6 +25,7 @@ pub struct AppState {
     pub session_bus: SessionUpdateBusContainer,
     pub permission_bus: PermissionBusContainer,
     pub workspace_bus: WorkspaceUpdateBusContainer,
+    pub code_selection_bus: CodeSelectionBusContainer,
     /// Current welcome session - created when user selects an agent
     welcome_session: Option<WelcomeSession>,
     /// Service layer
@@ -62,6 +64,9 @@ impl AppState {
             session_bus: SessionUpdateBusContainer::new(),
             permission_bus: PermissionBusContainer::new(),
             workspace_bus,
+            code_selection_bus: Arc::new(std::sync::Mutex::new(
+                crate::core::event_bus::code_selection_bus::CodeSelectionBus::new(),
+            )),
             welcome_session: None,
             agent_service: None,
             message_service: None,
