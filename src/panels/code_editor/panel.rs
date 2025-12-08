@@ -10,7 +10,7 @@ use gpui_component::{
     list::ListItem,
     resizable::{h_resizable, resizable_panel},
     tree::{tree, TreeState},
-    v_flex, ActiveTheme, IconName, Sizable, WindowExt,
+    v_flex, ActiveTheme, IconName, Sizable, StyledExt, WindowExt,
 };
 use lsp_types::{CodeActionKind, TextEdit, WorkspaceEdit};
 
@@ -30,6 +30,7 @@ pub struct CodeEditorPanel {
     show_file_tree: bool,
     lsp_store: CodeEditorPanelLspStore,
     current_file_path: Option<PathBuf>,
+    has_opened_file: bool,
     _subscriptions: Vec<Subscription>,
     _lint_task: Task<()>,
 }
@@ -71,7 +72,6 @@ impl CodeEditorPanel {
                     hard_tabs: false,
                 })
                 .soft_wrap(false)
-                .default_value(include_str!("../../fixtures/test.rs"))
                 .placeholder("Enter your code here...");
 
             let lsp_store = Rc::new(lsp_store.clone());
@@ -104,6 +104,7 @@ impl CodeEditorPanel {
             show_file_tree: true,
             lsp_store,
             current_file_path: None,
+            has_opened_file: false,
             _subscriptions,
             _lint_task: Task::ready(()),
         }
@@ -254,6 +255,7 @@ impl CodeEditorPanel {
 
                     this.language = language;
                     this.current_file_path = Some(path_clone);
+                    this.has_opened_file = true;
                     cx.notify();
                 });
             })
@@ -508,6 +510,38 @@ impl CodeEditorPanel {
                 log::error!("[CodeEditorPanel] Failed to lock CodeSelectionBus");
             });
     }
+
+    fn render_empty_state(&self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        v_flex()
+            .size_full()
+            .items_center()
+            .justify_center()
+            .gap_4()
+            .child(
+                v_flex()
+                    .items_center()
+                    .gap_3()
+                    .child(
+                        div()
+                            .child(IconName::File)
+                            .text_color(cx.theme().muted_foreground)
+                            .text_size(px(48.))
+                    )
+                    .child(
+                        div()
+                            .text_xl()
+                            .font_semibold()
+                            .text_color(cx.theme().foreground)
+                            .child("No File Opened")
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Select a file from the file tree to start editing")
+                    )
+            )
+    }
 }
 
 impl Render for CodeEditorPanel {
@@ -563,23 +597,46 @@ impl Render for CodeEditorPanel {
             .focus_bordered(false)
             .into_any_element();
 
+        // 根据是否打开文件决定显示内容
+        let main_content = if self.has_opened_file {
+            // 已打开文件，显示编辑器
+            if self.show_file_tree {
+                h_resizable("editor-container")
+                    .child(
+                        resizable_panel()
+                            .size(px(240.))
+                            .child(self.render_file_tree(window, cx)),
+                    )
+                    .child(editor_input)
+                    .into_any_element()
+            } else {
+                h_flex().size_full().child(editor_input).into_any_element()
+            }
+        } else {
+            // 未打开文件，显示欢迎页
+            if self.show_file_tree {
+                h_resizable("editor-container")
+                    .child(
+                        resizable_panel()
+                            .size(px(240.))
+                            .child(self.render_file_tree(window, cx)),
+                    )
+                    .child(self.render_empty_state(window, cx).into_any_element())
+                    .into_any_element()
+            } else {
+                h_flex()
+                    .size_full()
+                    .child(self.render_empty_state(window, cx))
+                    .into_any_element()
+            }
+        };
+
         v_flex().id("app").size_full().child(
             v_flex()
                 .id("source")
                 .w_full()
                 .flex_1()
-                .child(if self.show_file_tree {
-                    h_resizable("editor-container")
-                        .child(
-                            resizable_panel()
-                                .size(px(240.))
-                                .child(self.render_file_tree(window, cx)),
-                        )
-                        .child(editor_input)
-                        .into_any_element()
-                } else {
-                    h_flex().size_full().child(editor_input).into_any_element()
-                })
+                .child(main_content)
                 .child(
                     h_flex()
                         .justify_between()
