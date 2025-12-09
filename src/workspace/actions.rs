@@ -598,7 +598,7 @@ impl DockWorkspace {
 // Agent Configuration Action Handlers
 // ============================================================================
 
-pub fn add_agent(action: &AddAgent, _window: &mut Window, cx: &mut App) {
+pub fn add_agent(action: &AddAgent, cx: &mut App) {
     let agent_config_service = match AppState::global(cx).agent_config_service() {
         Some(service) => service.clone(),
         None => {
@@ -627,7 +627,7 @@ pub fn add_agent(action: &AddAgent, _window: &mut Window, cx: &mut App) {
     .detach();
 }
 
-pub fn update_agent(action: &UpdateAgent, _window: &mut Window, cx: &mut App) {
+pub fn update_agent(action: &UpdateAgent, cx: &mut App) {
     let agent_config_service = match AppState::global(cx).agent_config_service() {
         Some(service) => service.clone(),
         None => {
@@ -656,7 +656,7 @@ pub fn update_agent(action: &UpdateAgent, _window: &mut Window, cx: &mut App) {
     .detach();
 }
 
-pub fn remove_agent(action: &RemoveAgent, _window: &mut Window, cx: &mut App) {
+pub fn remove_agent(action: &RemoveAgent, cx: &mut App) {
     let agent_config_service = match AppState::global(cx).agent_config_service() {
         Some(service) => service.clone(),
         None => {
@@ -687,7 +687,7 @@ pub fn remove_agent(action: &RemoveAgent, _window: &mut Window, cx: &mut App) {
     .detach();
 }
 
-pub fn restart_agent(action: &RestartAgent, _window: &mut Window, cx: &mut App) {
+pub fn restart_agent(action: &RestartAgent, cx: &mut App) {
     let agent_config_service = match AppState::global(cx).agent_config_service() {
         Some(service) => service.clone(),
         None => {
@@ -711,7 +711,7 @@ pub fn restart_agent(action: &RestartAgent, _window: &mut Window, cx: &mut App) 
     .detach();
 }
 
-pub fn reload_agent_config(_action: &ReloadAgentConfig, _window: &mut Window, cx: &mut App) {
+pub fn reload_agent_config(_action: &ReloadAgentConfig, cx: &mut App) {
     let agent_config_service = match AppState::global(cx).agent_config_service() {
         Some(service) => service.clone(),
         None => {
@@ -733,7 +733,7 @@ pub fn reload_agent_config(_action: &ReloadAgentConfig, _window: &mut Window, cx
     .detach();
 }
 
-pub fn set_upload_dir(action: &SetUploadDir, _window: &mut Window, cx: &mut App) {
+pub fn set_upload_dir(action: &SetUploadDir, cx: &mut App) {
     let agent_config_service = match AppState::global(cx).agent_config_service() {
         Some(service) => service.clone(),
         None => {

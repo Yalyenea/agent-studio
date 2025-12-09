@@ -14,7 +14,7 @@ use crate::{
 };
 
 // Action handlers module
-mod actions;
+pub mod actions;
 
 const MAIN_DOCK_AREA: DockAreaTab = DockAreaTab {
     id: "main-dock",
