@@ -320,8 +320,8 @@ async fn agent_event_loop(
         cmd.args(&config.args);
         cmd
     };
-    // let mut command = tokio::process::Command::new(&config.command);
-    command.args(&config.args);
+
+    // Set environment variables and stdio for all platforms
     command.envs(&config.env);
     command.stdin(std::process::Stdio::piped());
     command.stdout(std::process::Stdio::piped());

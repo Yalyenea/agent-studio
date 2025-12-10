@@ -5,18 +5,21 @@ use gpui::{
 
 use gpui_component::{
     button::Button,
+    dialog::DialogButtonProps,
     group_box::GroupBoxVariant,
     h_flex,
+    input::{Input, InputState},
     label::Label,
     setting::{
         NumberFieldOptions, RenderOptions, SettingField, SettingFieldElement, SettingGroup,
         SettingItem, SettingPage, Settings,
     },
     text::TextView,
-    v_flex, ActiveTheme, Icon, IconName, Sizable, Size, Theme, ThemeMode,
+    v_flex, ActiveTheme, Icon, IconName, Sizable, Size, Theme, ThemeMode, WindowExt as _,
 };
 
 use crate::{
+    app::actions::{AddAgent, RemoveAgent, RestartAgent, UpdateAgent},
     core::{config::AgentProcessConfig, updater::{UpdateCheckResult, UpdateManager, Version}},
     AppState,
 };
@@ -197,6 +200,238 @@ impl SettingsPanel {
         .detach();
 
         panel
+    }
+
+    /// Show dialog to add or edit an agent
+    fn show_add_edit_agent_dialog(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        agent_name: Option<String>,
+    ) {
+        let is_edit = agent_name.is_some();
+        let title = if is_edit {
+            "Edit Agent"
+        } else {
+            "Add New Agent"
+        };
+
+        // Get existing config if editing
+        let existing_config = agent_name.as_ref().and_then(|name| {
+            self.agent_configs.get(name).cloned()
+        });
+
+        // Create input states
+        let name_input = cx.new(|cx| {
+            let mut state = InputState::new(window, cx).placeholder("Agent name (e.g., Claude Code)");
+            if let Some(name) = &agent_name {
+                state.set_value(name.clone(), window, cx);
+            }
+            state
+        });
+
+        let command_input = cx.new(|cx| {
+            let mut state = InputState::new(window, cx).placeholder("Command (e.g., claude-code-acp)");
+            if let Some(config) = &existing_config {
+                state.set_value(config.command.clone(), window, cx);
+            }
+            state
+        });
+
+        let args_input = cx.new(|cx| {
+            let mut state = InputState::new(window, cx)
+                .placeholder("Arguments (space-separated, e.g., --experimental-acp)");
+            if let Some(config) = &existing_config {
+                state.set_value(config.args.join(" "), window, cx);
+            }
+            state
+        });
+
+        let env_input = cx.new(|cx| {
+            let mut state = InputState::new(window, cx)
+                .placeholder("Environment variables (KEY=VALUE, one per line)");
+            if let Some(config) = &existing_config {
+                let env_text = config.env.iter()
+                    .map(|(k, v)| format!("{}={}", k, v))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                state.set_value(env_text, window, cx);
+            }
+            state
+        });
+
+        window.open_dialog(cx, move |dialog, window, cx| {
+            dialog
+                .title(title)
+                .confirm()
+                .button_props(
+                    DialogButtonProps::default()
+                        .ok_text(if is_edit { "Update" } else { "Add" })
+                        .cancel_text("Cancel")
+                )
+                .on_ok({
+                    let name_input = name_input.clone();
+                    let command_input = command_input.clone();
+                    let args_input = args_input.clone();
+                    let env_input = env_input.clone();
+                    let agent_name = agent_name.clone();
+
+                    move |_, window, cx| {
+                        let name = name_input.read(cx).text().to_string().trim().to_string();
+                        let command = command_input.read(cx).text().to_string().trim().to_string();
+                        let args_text = args_input.read(cx).text().to_string();
+                        let env_text = env_input.read(cx).text().to_string();
+
+                        // Validate inputs
+                        if name.is_empty() {
+                            log::warn!("Agent name cannot be empty");
+                            return false;  // Don't close dialog
+                        }
+
+                        if command.is_empty() {
+                            log::warn!("Command cannot be empty");
+                            return false;
+                        }
+
+                        // Parse args (split by whitespace, ignore empty strings)
+                        let args: Vec<String> = args_text
+                            .split_whitespace()
+                            .map(|s| s.to_string())
+                            .collect();
+
+                        // Parse env (KEY=VALUE format, one per line)
+                        let mut env = HashMap::new();
+                        for line in env_text.lines() {
+                            let line = line.trim();
+                            if line.is_empty() {
+                                continue;
+                            }
+                            if let Some((key, value)) = line.split_once('=') {
+                                env.insert(key.trim().to_string(), value.trim().to_string());
+                            } else {
+                                log::warn!("Invalid env format (should be KEY=VALUE): {}", line);
+                                return false;
+                            }
+                        }
+
+                        // Dispatch appropriate action
+                        if is_edit {
+                            window.dispatch_action(
+                                Box::new(UpdateAgent {
+                                    name,
+                                    command,
+                                    args,
+                                    env,
+                                }),
+                                cx
+                            );
+                        } else {
+                            window.dispatch_action(
+                                Box::new(AddAgent {
+                                    name,
+                                    command,
+                                    args,
+                                    env,
+                                }),
+                                cx
+                            );
+                        }
+
+                        true  // Close dialog
+                    }
+                })
+                .child(
+                    v_flex()
+                        .w_full()
+                        .gap_4()
+                        .p_4()
+                        .child(
+                            v_flex()
+                                .gap_2()
+                                .child(Label::new("Agent Name").text_sm().font_weight(gpui::FontWeight::SEMIBOLD))
+                                .child(
+                                    Input::new(&name_input)
+                                        .disabled(is_edit)  // Can't change name when editing
+                                )
+                        )
+                        .child(
+                            v_flex()
+                                .gap_2()
+                                .child(Label::new("Command").text_sm().font_weight(gpui::FontWeight::SEMIBOLD))
+                                .child(Input::new(&command_input))
+                                .child(
+                                    Label::new("Full path or command name in PATH")
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground)
+                                )
+                        )
+                        .child(
+                            v_flex()
+                                .gap_2()
+                                .child(Label::new("Arguments (optional)").text_sm().font_weight(gpui::FontWeight::SEMIBOLD))
+                                .child(Input::new(&args_input))
+                        )
+                        .child(
+                            v_flex()
+                                .gap_2()
+                                .child(Label::new("Environment Variables (optional)").text_sm().font_weight(gpui::FontWeight::SEMIBOLD))
+                                .child(Input::new(&env_input))
+                                .child(
+                                    Label::new("One per line, format: KEY=VALUE")
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground)
+                                )
+                        )
+                )
+        });
+    }
+
+    /// Show confirmation dialog before deleting an agent
+    fn show_delete_confirm_dialog(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        agent_name: String,
+    ) {
+        window.open_dialog(cx, move |dialog, window, cx| {
+            dialog
+                .title("Confirm Delete")
+                .confirm()
+                .button_props(
+                    DialogButtonProps::default()
+                        .ok_text("Delete")
+                        .ok_variant(gpui_component::button::ButtonVariant::Danger)
+                        .cancel_text("Cancel")
+                )
+                .on_ok({
+                    let agent_name = agent_name.clone();
+                    move |_, window, cx| {
+                        log::info!("Deleting agent: {}", agent_name);
+                        window.dispatch_action(
+                            Box::new(RemoveAgent {
+                                name: agent_name.clone(),
+                            }),
+                            cx
+                        );
+                        true  // Close dialog
+                    }
+                })
+                .child(
+                    v_flex()
+                        .w_full()
+                        .gap_3()
+                        .p_4()
+                        .child(
+                            Label::new(format!("Are you sure you want to delete the agent \"{}\"?", agent_name))
+                                .text_sm()
+                        )
+                        .child(
+                            Label::new("This action cannot be undone. The agent process will be terminated.")
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground)
+                        )
+                )
+        });
     }
 
     /// Handle agent configuration events
@@ -694,19 +929,11 @@ impl SettingsPanel {
                                                     .icon(IconName::Plus)
                                                     .small()
                                                     .on_click({
+                                                        let view = view.clone();
                                                         move |_, window, cx| {
-                                                            // TODO: Show add agent dialog
-                                                            log::info!("Add new agent clicked");
-                                                            // For now, dispatch a sample action
-                                                            window.dispatch_action(
-                                                                Box::new(crate::AddAgent {
-                                                                    name: "new-agent".to_string(),
-                                                                    command: "python".to_string(),
-                                                                    args: vec![],
-                                                                    env: std::collections::HashMap::new(),
-                                                                }),
-                                                                cx
-                                                            );
+                                                            view.update(cx, |this, cx| {
+                                                                this.show_add_edit_agent_dialog(window, cx, None);
+                                                            });
                                                         }
                                                     })
                                             )
@@ -727,6 +954,7 @@ impl SettingsPanel {
                                 } else {
                                     for (idx, (name, config)) in agent_configs.iter().enumerate() {
                                         let name_clone = name.clone();
+                                        let name_for_edit = name.clone();
                                         let name_for_restart = name.clone();
                                         let name_for_remove = name.clone();
 
@@ -778,6 +1006,25 @@ impl SettingsPanel {
                                                         .gap_2()
                                                         .items_center()
                                                         .child(
+                                                            Button::new(("edit-btn", idx))
+                                                                .label("Edit")
+                                                                .icon(IconName::Settings)
+                                                                .outline()
+                                                                .small()
+                                                                .on_click({
+                                                                    let view = view.clone();
+                                                                    move |_, window, cx| {
+                                                                        view.update(cx, |this, cx| {
+                                                                            this.show_add_edit_agent_dialog(
+                                                                                window,
+                                                                                cx,
+                                                                                Some(name_for_edit.clone())
+                                                                            );
+                                                                        });
+                                                                    }
+                                                                })
+                                                        )
+                                                        .child(
                                                             Button::new(("restart-btn", idx))
                                                                 .label("Restart")
                                                                 .icon(IconName::LoaderCircle)
@@ -786,7 +1033,7 @@ impl SettingsPanel {
                                                                 .on_click(move |_, window, cx| {
                                                                     log::info!("Restart agent: {}", name_for_restart);
                                                                     window.dispatch_action(
-                                                                        Box::new(crate::RestartAgent {
+                                                                        Box::new(RestartAgent {
                                                                             name: name_for_restart.clone(),
                                                                         }),
                                                                         cx
@@ -796,17 +1043,20 @@ impl SettingsPanel {
                                                         .child(
                                                             Button::new(("remove-btn", idx))
                                                                 .label("Remove")
-                                                                .icon(IconName::Minus)
+                                                                .icon(IconName::Delete)
                                                                 .outline()
                                                                 .small()
-                                                                .on_click(move |_, window, cx| {
-                                                                    log::info!("Remove agent: {}", name_for_remove);
-                                                                    window.dispatch_action(
-                                                                        Box::new(crate::RemoveAgent {
-                                                                            name: name_for_remove.clone(),
-                                                                        }),
-                                                                        cx
-                                                                    );
+                                                                .on_click({
+                                                                    let view = view.clone();
+                                                                    move |_, window, cx| {
+                                                                        view.update(cx, |this, cx| {
+                                                                            this.show_delete_confirm_dialog(
+                                                                                window,
+                                                                                cx,
+                                                                                name_for_remove.clone()
+                                                                            );
+                                                                        });
+                                                                    }
                                                                 })
                                                         )
                                                 )

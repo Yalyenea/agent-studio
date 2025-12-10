@@ -91,6 +91,9 @@ impl AgentConfigService {
     // ========== Validation ==========
 
     /// Validate that a command exists and is executable
+    ///
+    /// On Windows, commands are executed via `cmd /C`, so we allow any command
+    /// that can be found in PATH. On Unix-like systems, we check if the file exists.
     pub fn validate_command(&self, command: &str) -> Result<()> {
         // Check if command is an absolute path
         let command_path = Path::new(command);
@@ -114,9 +117,31 @@ impl AgentConfigService {
             Ok(())
         } else {
             // Relative path or command name - try to find in PATH
+            // On Windows, commands are executed via `cmd /C`, so we trust the shell
+            // to find the command. We just verify it's findable via `which`.
+            // On Unix-like systems, we also verify via `which`.
             if let Ok(resolved) = which::which(command) {
-                log::debug!("Resolved command '{}' to: {:?}", command, resolved);
-                Ok(())
+                log::info!("Resolved command '{}' to: {:?}", command, resolved);
+
+                // On Windows, cmd.exe will handle .cmd, .bat, .exe files
+                // so we don't need additional validation
+                #[cfg(target_os = "windows")]
+                {
+                    Ok(())
+                }
+
+                // On Unix-like systems, verify the resolved path exists and is executable
+                #[cfg(not(target_os = "windows"))]
+                {
+                    if resolved.exists() && resolved.is_file() {
+                        Ok(())
+                    } else {
+                        Err(anyhow!(
+                            "Resolved command path does not exist or is not a file: {}",
+                            resolved.display()
+                        ))
+                    }
+                }
             } else {
                 Err(anyhow!(
                     "Command '{}' not found in PATH. Please provide an absolute path or ensure the command is in your system PATH.",
