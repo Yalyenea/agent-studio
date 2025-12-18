@@ -133,6 +133,15 @@ impl WorkspaceConfig {
         self.tasks.push(task);
     }
 
+    /// Remove a task by ID
+    pub fn remove_task(&mut self, task_id: &str) -> Option<WorkspaceTask> {
+        if let Some(pos) = self.tasks.iter().position(|t| t.id == task_id) {
+            Some(self.tasks.remove(pos))
+        } else {
+            None
+        }
+    }
+
     /// Get tasks for a specific workspace
     pub fn tasks_for_workspace(&self, workspace_id: &str) -> Vec<&WorkspaceTask> {
         self.tasks

@@ -21,17 +21,22 @@ pub async fn write_image_to_temp_file(image: &Image) -> anyhow::Result<String> {
     // Check if the image has an alpha channel
     let has_alpha = matches!(
         img.color(),
-        image::ColorType::Rgba8 | image::ColorType::Rgba16 | image::ColorType::La8 | image::ColorType::La16
+        image::ColorType::Rgba8
+            | image::ColorType::Rgba16
+            | image::ColorType::La8
+            | image::ColorType::La16
     );
 
     if has_alpha {
         // For images with transparency, save as PNG to preserve alpha channel
-        let temp_file = std::env::temp_dir().join(format!("{}.png", crate::utils::time::now_millis()));
+        let temp_file =
+            std::env::temp_dir().join(format!("{}.png", crate::utils::time::now_millis()));
         img.save_with_format(&temp_file, image::ImageFormat::Png)?;
         Ok(temp_file.to_string_lossy().to_string())
     } else {
         // For images without transparency, convert to JPEG for better compression
-        let temp_file = std::env::temp_dir().join(format!("{}.jpg", crate::utils::time::now_millis()));
+        let temp_file =
+            std::env::temp_dir().join(format!("{}.jpg", crate::utils::time::now_millis()));
 
         // Convert to RGB if needed
         let rgb_img = img.to_rgb8();

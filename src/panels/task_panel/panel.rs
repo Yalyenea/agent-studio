@@ -6,10 +6,18 @@
 //! - Tree view (by workspace) and timeline view (by date)
 
 use gpui::{
-    App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement, IntoElement, MouseButton, MouseDownEvent, ParentElement, Pixels, Render, SharedString, StatefulInteractiveElement, Styled, Subscription, Window, div, prelude::FluentBuilder, px
+    App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement, IntoElement,
+    MouseButton, MouseDownEvent, ParentElement, Pixels, Render, SharedString,
+    StatefulInteractiveElement, Styled, Subscription, Window, div, prelude::FluentBuilder, px,
 };
 use gpui_component::{
-    ActiveTheme, Icon, IconName, InteractiveElementExt, Selectable, Sizable, StyledExt, button::{Button, ButtonGroup, ButtonVariants}, h_flex, input::{Input, InputState}, menu::{ContextMenuExt, DropdownMenu, PopupMenuItem}, scroll::ScrollableElement as _, v_flex
+    ActiveTheme, Icon, IconName, InteractiveElementExt, Selectable, Sizable, StyledExt,
+    button::{Button, ButtonGroup, ButtonVariants},
+    h_flex,
+    input::{Input, InputState},
+    menu::{ContextMenuExt, DropdownMenu, PopupMenuItem},
+    scroll::ScrollableElement as _,
+    v_flex,
 };
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -237,6 +245,23 @@ impl TaskPanel {
                             .ok();
                         }
                     }
+                    WorkspaceUpdateEvent::TaskRemoved {
+                        workspace_id,
+                        task_id,
+                    } => {
+                        log::debug!(
+                            "TaskPanel received TaskRemoved: {} from {}",
+                            task_id,
+                            workspace_id
+                        );
+                        // Reload workspace data to remove the task from UI
+                        if let Some(entity) = entity_weak.upgrade() {
+                            cx.update(|cx| {
+                                Self::load_workspace_data(&entity, workspace_service.clone(), cx);
+                            })
+                            .ok();
+                        }
+                    }
                     WorkspaceUpdateEvent::TaskUpdated { task_id } => {
                         log::debug!("TaskPanel received TaskUpdated: {}", task_id);
                         if let Some(entity) = entity_weak.upgrade() {
@@ -294,7 +319,9 @@ impl TaskPanel {
         cx: &mut Context<Self>,
     ) {
         let mut updated = false;
+        let mut task_id_to_update: Option<String> = None;
 
+        // Update local state for immediate UI feedback
         for workspace in &mut self.workspaces {
             for task in &mut workspace.tasks {
                 if task.session_id.as_deref() != Some(session_id) {
@@ -305,6 +332,9 @@ impl TaskPanel {
                     continue;
                 }
 
+                // Store task_id for persistence
+                task_id_to_update = Some(task.id.clone());
+
                 let mut updated_task = (**task).clone();
                 updated_task.status = status.clone();
                 *task = Rc::new(updated_task);
@@ -314,6 +344,25 @@ impl TaskPanel {
 
         if updated {
             cx.notify();
+
+            // Persist status to JSON file
+            if let Some(task_id) = task_id_to_update {
+                if let Some(workspace_service) = AppState::global(cx).workspace_service() {
+                    let workspace_service = workspace_service.clone();
+                    let status_clone = status.clone();
+                    cx.spawn(async move |_entity, _cx| {
+                        match workspace_service.update_task_status(&task_id, status_clone).await {
+                            Ok(_) => {
+                                log::debug!("Task status persisted: {} -> {:?}", task_id, status);
+                            }
+                            Err(e) => {
+                                log::error!("Failed to persist task status: {}", e);
+                            }
+                        }
+                    })
+                    .detach();
+                }
+            }
         }
     }
 
@@ -417,23 +466,26 @@ impl TaskPanel {
     }
 
     fn remove_task(&mut self, task_id: String, cx: &mut Context<Self>) {
-        // Remove task from local state
-        for workspace in &mut self.workspaces {
-            workspace.tasks.retain(|t| t.id != task_id);
-        }
+        let workspace_service = match AppState::global(cx).workspace_service() {
+            Some(service) => service.clone(),
+            None => {
+                log::warn!("WorkspaceService not available");
+                return;
+            }
+        };
 
-        // Clear selection if the removed task was selected
-        if self.selected_task_id.as_ref() == Some(&task_id) {
-            self.selected_task_id = None;
-        }
-
-        // TODO: If using real data, also remove from WorkspaceService
-        // if let Some(workspace_service) = AppState::global(cx).workspace_service() {
-        //     // workspace_service.remove_task(&task_id).await
-        // }
-
-        log::info!("Removed task: {}", task_id);
-        cx.notify();
+        cx.spawn(async move |entity, cx| {
+            match workspace_service.remove_task(&task_id).await {
+                Ok(_) => {
+                    log::info!("Successfully removed task: {}", task_id);
+                    // The UI will be updated via the TaskRemoved event
+                }
+                Err(e) => {
+                    log::error!("Failed to remove task: {}", e);
+                }
+            }
+        })
+        .detach();
     }
 
     fn select_task(&mut self, task_id: String, window: &mut Window, cx: &mut Context<Self>) {
@@ -806,43 +858,40 @@ impl TaskPanel {
                 }
             }))
             .on_double_click(cx.listener({
-
                 let task_id = task_id.clone();
                 move |this, _, window, cx| {
                     log::debug!("====== >>> Double click on task");
                     this.select_task(task_id.clone(), window, cx);
                 }
-
             }))
-            .on_mouse_down(gpui::MouseButton::Left, cx.listener({
-                // let session_id = session_id.clone();
-                move |_this, event: &MouseDownEvent, window, cx| {
-                    if event.click_count == 2 {
-                        // 双击：打开新的会话面板
-                        // let action = match session_id.as_ref() {
-                        //     Some(id) => ShowConversationPanel::with_session(id.clone()),
-                        //     None => ShowConversationPanel::new(),
-                        // };
-                        // window.dispatch_action(Box::new(action), cx);
+            .on_mouse_down(
+                gpui::MouseButton::Left,
+                cx.listener({
+                    // let session_id = session_id.clone();
+                    move |_this, event: &MouseDownEvent, window, cx| {
+                        if event.click_count == 2 {
+                            // 双击：打开新的会话面板
+                            // let action = match session_id.as_ref() {
+                            //     Some(id) => ShowConversationPanel::with_session(id.clone()),
+                            //     None => ShowConversationPanel::new(),
+                            // };
+                            // window.dispatch_action(Box::new(action), cx);
+                        }
                     }
-                }
-            }))
+                }),
+            )
             .on_mouse_up(
                 MouseButton::Left,
                 cx.listener({
-
-                let task_id = task_id.clone();
-                move |this, event: &gpui::MouseUpEvent, window, cx| {
-
-                    if event.click_count==1 {
-                        log::debug!("====== >>> 单击  click on task");
-                    }else if event.click_count==2 {
-                        log::debug!("====== >>> 双击  click on task");
+                    let task_id = task_id.clone();
+                    move |this, event: &gpui::MouseUpEvent, window, cx| {
+                        if event.click_count == 1 {
+                            log::debug!("====== >>> 单击  click on task");
+                        } else if event.click_count == 2 {
+                            log::debug!("====== >>> 双击  click on task");
+                        }
                     }
-                
-                }
-
-            }),
+                }),
             )
             // First row: status icon + task name + mode
             .child(
