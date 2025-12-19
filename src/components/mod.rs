@@ -1,6 +1,7 @@
 mod agent_message;
 mod agent_todo_list;
 mod chat_input_box;
+mod file_picker;
 mod permission_request;
 // mod task_list_item;
 mod tool_call_item;
@@ -11,6 +12,8 @@ pub use agent_message::{AgentMessage, AgentMessageData, AgentMessageMeta, AgentM
 pub use agent_todo_list::{AgentTodoList, AgentTodoListView, PlanMeta};
 
 pub use chat_input_box::ChatInputBox;
+
+pub use file_picker::{FilePickerDelegate, FileItem};
 
 pub use tool_call_item::{ToolCallItem, ToolCallItemView};
 

@@ -15,97 +15,17 @@ use agent_client_protocol::ImageContent;
 
 use crate::{
     AppState, CreateTaskFromWelcome, WelcomeSession, app::actions::AddCodeSelection,
-    components::ChatInputBox,
+    components::{ChatInputBox, FilePickerDelegate},
 };
 
-/// Delegate for the context list in the chat input popover
-struct ContextListDelegate {
-    items: Vec<ContextItem>,
-}
-
-#[derive(Clone)]
-struct ContextItem {
-    name: &'static str,
-    icon: &'static str,
-}
-
-impl ContextListDelegate {
-    fn new() -> Self {
-        Self {
-            items: vec![
-                ContextItem {
-                    name: "Files",
-                    icon: "file",
-                },
-                ContextItem {
-                    name: "Folders",
-                    icon: "folder",
-                },
-                ContextItem {
-                    name: "Code",
-                    icon: "code",
-                },
-                ContextItem {
-                    name: "Git Changes",
-                    icon: "git-branch",
-                },
-                ContextItem {
-                    name: "Terminal",
-                    icon: "terminal",
-                },
-                ContextItem {
-                    name: "Problems",
-                    icon: "alert-circle",
-                },
-                ContextItem {
-                    name: "URLs",
-                    icon: "link",
-                },
-            ],
-        }
-    }
-}
-
-impl ListDelegate for ContextListDelegate {
-    type Item = ListItem;
-
-    fn items_count(&self, _: usize, _: &App) -> usize {
-        self.items.len()
-    }
-
-    fn render_item(
-        &mut self,
-        ix: IndexPath,
-        _: &mut Window,
-        _: &mut gpui::Context<'_, gpui_component::list::ListState<ContextListDelegate>>,
-    ) -> Option<Self::Item> {
-        let item = self.items.get(ix.row)?;
-        Some(ListItem::new(ix).child(item.name))
-    }
-
-    fn set_selected_index(
-        &mut self,
-        _: Option<IndexPath>,
-        _: &mut Window,
-        _: &mut Context<ListState<Self>>,
-    ) {
-    }
-
-    fn confirm(&mut self, _: bool, _: &mut Window, _cx: &mut Context<ListState<Self>>) {
-        // Handle item selection - for now just close the popover
-    }
-
-    fn cancel(&mut self, _: &mut Window, _cx: &mut Context<ListState<Self>>) {
-        // Close the popover on cancel
-    }
-}
+// File picker delegate is now imported from components module
 
 /// Welcome panel displayed when creating a new task.
 /// Shows a centered input form with title, instructions, and send button.
 pub struct WelcomePanel {
     focus_handle: FocusHandle,
     input_state: Entity<InputState>,
-    context_list: Entity<ListState<ContextListDelegate>>,
+    context_list: Entity<ListState<FilePickerDelegate>>,
     context_popover_open: bool,
     mode_select: Entity<SelectState<Vec<&'static str>>>,
     agent_select: Entity<SelectState<Vec<String>>>,
@@ -294,8 +214,12 @@ impl WelcomePanel {
                 .placeholder("Describe what you'd like to build...")
         });
 
-        let context_list =
-            cx.new(|cx| ListState::new(ContextListDelegate::new(), window, cx).searchable(true));
+        // Get the current working directory for file picker
+        let working_dir = AppState::global(cx).current_working_dir().clone();
+        let context_list = cx.new(|cx| {
+            let delegate = FilePickerDelegate::new(&working_dir);
+            ListState::new(delegate, window, cx).searchable(true)
+        });
 
         let mode_select = cx.new(|cx| {
             SelectState::new(
