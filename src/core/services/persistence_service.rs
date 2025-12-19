@@ -7,7 +7,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use agent_client_protocol::{ContentBlock, ContentChunk, SessionUpdate, TextContent};
+use agent_client_protocol::{
+    ContentBlock, ContentChunk, SessionUpdate, TextContent, ToolCallStatus, ToolCallUpdate,
+};
 use anyhow::{Context, Result};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -55,6 +57,9 @@ struct ChunkAccumulator {
     agent_thought_text: String,
     /// Accumulated chunks for UserMessageChunk
     user_message_chunks: Vec<ContentChunk>,
+    /// Tool call updates: toolCallId -> (first_timestamp, latest_update)
+    /// Only keeps the latest update for each tool call
+    tool_call_updates: HashMap<String, (String, ToolCallUpdate)>,
 }
 
 impl ChunkAccumulator {
@@ -66,6 +71,7 @@ impl ChunkAccumulator {
             agent_message_chunks: Vec::new(),
             agent_thought_text: String::new(),
             user_message_chunks: Vec::new(),
+            tool_call_updates: HashMap::new(),
         }
     }
 
@@ -147,6 +153,71 @@ impl ChunkAccumulator {
         }
     }
 
+    /// Accumulate a tool call update
+    /// Only keeps the latest update for each tool call ID
+    /// When status is Completed/Failed, returns FlushData to write immediately
+    fn accumulate_tool_call_update(&mut self, update: ToolCallUpdate) -> Option<FlushData> {
+        let tool_call_id = update.tool_call_id.to_string();
+        let timestamp = Utc::now().to_rfc3339();
+
+        // Check if this is a terminal state (Completed/Failed)
+        let is_terminal = update
+            .fields
+            .status
+            .as_ref()
+            .map(|s| matches!(s, ToolCallStatus::Completed | ToolCallStatus::Failed))
+            .unwrap_or(false);
+
+        if is_terminal {
+            // Terminal state: write immediately
+            // Check if we have accumulated earlier updates for this tool call
+            let final_update = if let Some((first_timestamp, _existing)) =
+                self.tool_call_updates.remove(&tool_call_id)
+            {
+                // Use the first timestamp for the final update
+                log::info!(
+                    "Tool call {} reached terminal state {:?}, flushing immediately",
+                    tool_call_id,
+                    update.fields.status
+                );
+                (first_timestamp, SessionUpdate::ToolCallUpdate(update))
+            } else {
+                // First time seeing this tool call and it's already complete
+                log::info!(
+                    "Tool call {} received in terminal state {:?}, writing immediately",
+                    tool_call_id,
+                    update.fields.status
+                );
+                (timestamp, SessionUpdate::ToolCallUpdate(update))
+            };
+
+            Some(FlushData::ToolCallCompleted(final_update.0, final_update.1))
+        } else {
+            // Non-terminal state: accumulate
+            self.tool_call_updates
+                .entry(tool_call_id.clone())
+                .and_modify(|(_ts, existing_update)| {
+                    // Keep the first timestamp, update the content
+                    *existing_update = update.clone();
+                    log::debug!(
+                        "Updated tool_call_update for toolCallId: {} (status: {:?})",
+                        tool_call_id,
+                        update.fields.status
+                    );
+                })
+                .or_insert_with(|| {
+                    log::debug!(
+                        "First tool_call_update for toolCallId: {} (status: {:?})",
+                        tool_call_id,
+                        update.fields.status
+                    );
+                    (timestamp, update)
+                });
+
+            None // Continue accumulating
+        }
+    }
+
     /// Flush accumulated chunks into a SessionUpdate
     /// Returns None if nothing accumulated, Some((timestamp, update)) otherwise
     fn flush(&mut self) -> Option<(String, SessionUpdate)> {
@@ -161,7 +232,8 @@ impl ChunkAccumulator {
                 SessionUpdate::AgentMessageChunk(merged_chunk)
             }
             AccumulatedChunkType::AgentThought => {
-                let text_block = ContentBlock::Text(TextContent::new(self.agent_thought_text.clone()));
+                let text_block =
+                    ContentBlock::Text(TextContent::new(self.agent_thought_text.clone()));
                 SessionUpdate::AgentThoughtChunk(ContentChunk::new(text_block))
             }
             AccumulatedChunkType::UserMessage => {
@@ -171,9 +243,33 @@ impl ChunkAccumulator {
             AccumulatedChunkType::Empty => unreachable!(),
         };
 
-        // Reset state
-        *self = ChunkAccumulator::new();
+        // Reset chunk state (but keep tool_call_updates)
+        self.chunk_type = AccumulatedChunkType::Empty;
+        self.first_timestamp = String::new();
+        self.agent_message_chunks.clear();
+        self.agent_thought_text.clear();
+        self.user_message_chunks.clear();
+
         Some((timestamp, update))
+    }
+
+    /// Flush all tool call updates
+    /// Returns a vector of (timestamp, update) pairs
+    fn flush_tool_call_updates(&mut self) -> Vec<(String, SessionUpdate)> {
+        if self.tool_call_updates.is_empty() {
+            return Vec::new();
+        }
+
+        let updates: Vec<(String, SessionUpdate)> = self
+            .tool_call_updates
+            .drain()
+            .map(|(_tool_call_id, (timestamp, update))| {
+                (timestamp, SessionUpdate::ToolCallUpdate(update))
+            })
+            .collect();
+
+        log::info!("Flushed {} tool_call_updates", updates.len());
+        updates
     }
 }
 
@@ -183,6 +279,8 @@ enum FlushData {
     Accumulated(Option<(String, SessionUpdate)>),
     /// Both accumulated data and a new non-chunk update
     Both(Option<(String, SessionUpdate)>, SessionUpdate),
+    /// A completed tool call update (status=Completed/Failed)
+    ToolCallCompleted(String, SessionUpdate),
 }
 
 /// Merge multiple ContentChunks into a single ContentChunk
@@ -197,7 +295,9 @@ fn merge_text_chunks(chunks: &[ContentChunk]) -> ContentChunk {
     }
 
     // Check if all chunks are text
-    let all_text = chunks.iter().all(|chunk| matches!(chunk.content, ContentBlock::Text(_)));
+    let all_text = chunks
+        .iter()
+        .all(|chunk| matches!(chunk.content, ContentBlock::Text(_)));
 
     if all_text {
         // Concatenate all text
@@ -225,9 +325,7 @@ fn merge_text_chunks(chunks: &[ContentChunk]) -> ContentChunk {
 
     // Mixed content (text + images) - should not happen in practice
     // but handle defensively by returning first chunk
-    log::warn!(
-        "Attempted to merge heterogeneous chunks, returning first chunk only"
-    );
+    log::warn!("Attempted to merge heterogeneous chunks, returning first chunk only");
     chunks[0].clone()
 }
 
@@ -275,7 +373,7 @@ impl PersistenceService {
 
     /// Save a session update to disk
     ///
-    /// Accumulates chunk updates in memory and flushes when needed.
+    /// Accumulates chunk updates and tool_call_updates in memory and flushes when needed.
     /// Non-chunk updates trigger immediate flush and write.
     pub async fn save_update(&self, session_id: &str, update: SessionUpdate) -> Result<()> {
         let flush_data = {
@@ -296,6 +394,14 @@ impl PersistenceService {
                 SessionUpdate::UserMessageChunk(chunk) => {
                     log::debug!("Accumulating UserMessageChunk for session: {}", session_id);
                     accumulator.try_append_user_message_chunk(chunk)
+                }
+                SessionUpdate::ToolCallUpdate(update) => {
+                    log::debug!(
+                        "Accumulating ToolCallUpdate for session: {}, toolCallId: {}",
+                        session_id,
+                        update.tool_call_id
+                    );
+                    accumulator.accumulate_tool_call_update(update)
                 }
                 _ => {
                     // Non-chunk update: flush accumulator, then write both
@@ -333,6 +439,15 @@ impl PersistenceService {
                 }
                 // Then write non-chunk update with current timestamp
                 self.write_with_current_timestamp(session_id, non_chunk)
+                    .await?;
+            }
+            FlushData::ToolCallCompleted(timestamp, update) => {
+                // Write completed tool call update immediately
+                log::debug!(
+                    "Writing completed tool_call_update for session: {}",
+                    session_id
+                );
+                self.write_with_timestamp(session_id, update, timestamp)
                     .await?;
             }
             FlushData::Accumulated(None) => {
@@ -391,27 +506,50 @@ impl PersistenceService {
         update: SessionUpdate,
     ) -> Result<()> {
         let timestamp = Utc::now().to_rfc3339();
-        self.write_with_timestamp(session_id, update, timestamp).await
+        self.write_with_timestamp(session_id, update, timestamp)
+            .await
     }
 
-    /// Flush accumulated chunks for a specific session
+    /// Flush accumulated chunks and tool_call_updates for a specific session
     ///
     /// This should be called when a session completes or becomes idle
     pub async fn flush_session(&self, session_id: &str) -> Result<()> {
-        let flush_data = {
+        let (chunk_flush_data, tool_call_updates) = {
             let mut accumulators = self.accumulators.lock().unwrap();
-            accumulators.get_mut(session_id).and_then(|acc| acc.flush())
+            if let Some(acc) = accumulators.get_mut(session_id) {
+                let chunks = acc.flush();
+                let tool_calls = acc.flush_tool_call_updates();
+                (chunks, tool_calls)
+            } else {
+                (None, Vec::new())
+            }
         };
 
-        if let Some((timestamp, update)) = flush_data {
+        let has_chunks = chunk_flush_data.is_some();
+        let has_tool_calls = !tool_call_updates.is_empty();
+
+        // Write accumulated chunks first (if any)
+        if let Some((timestamp, update)) = chunk_flush_data {
             log::info!("Flushing accumulated chunks for session: {}", session_id);
             self.write_with_timestamp(session_id, update, timestamp)
                 .await?;
-        } else {
-            log::debug!(
-                "No accumulated chunks to flush for session: {}",
+        }
+
+        // Write all accumulated tool_call_updates
+        if has_tool_calls {
+            log::info!(
+                "Flushing {} tool_call_updates for session: {}",
+                tool_call_updates.len(),
                 session_id
             );
+            for (timestamp, update) in tool_call_updates {
+                self.write_with_timestamp(session_id, update, timestamp)
+                    .await?;
+            }
+        }
+
+        if !has_chunks && !has_tool_calls {
+            log::debug!("No accumulated data to flush for session: {}", session_id);
         }
 
         Ok(())

@@ -73,9 +73,7 @@ impl MessageService {
 
         workspace_bus.lock().unwrap().subscribe(move |event| {
             if let WorkspaceUpdateEvent::SessionStatusUpdated {
-                session_id,
-                status,
-                ..
+                session_id, status, ..
             } = event
             {
                 // Flush accumulator when session completes or becomes idle
@@ -97,7 +95,9 @@ impl MessageService {
             }
         });
 
-        log::info!("MessageService persistence subscriptions initialized (session_bus + workspace_bus)");
+        log::info!(
+            "MessageService persistence subscriptions initialized (session_bus + workspace_bus)"
+        );
     }
 
     /// Send a user message to an existing session
