@@ -1,7 +1,6 @@
 use gpui::{
-    AnyElement, App, Bounds, Corner, ElementId, Entity, Focusable, InteractiveElement, IntoElement,
-    ParentElement, Pixels, Point, RenderOnce, Styled, Window, anchored, deferred, div,
-    prelude::FluentBuilder, px,
+    AnyElement, App, Bounds, ElementId, Entity, Focusable, InteractiveElement, IntoElement,
+    ParentElement, Pixels, RenderOnce, Styled, Window, div, prelude::FluentBuilder, px,
 };
 use std::rc::Rc;
 
@@ -12,7 +11,7 @@ use gpui_component::{
 use agent_client_protocol::{AvailableCommand, ImageContent};
 
 use crate::app::actions::AddCodeSelection;
-use crate::components::AgentItem;
+use crate::components::{AgentItem, CommandSuggestionsPopover};
 use crate::core::services::SessionStatus;
 
 /// A reusable chat input component with context controls and send button.
@@ -299,77 +298,13 @@ impl RenderOnce for ChatInputBox {
         let show_commands = self.show_command_suggestions && !self.command_suggestions.is_empty();
         let command_popover = if show_commands {
             let bounds = command_anchor.read(cx).bounds;
-            let commands = self.command_suggestions;
-            let command_count = commands.len();
 
-            bounds.map(|bounds| {
-                let position = bounds.corner(Corner::TopLeft)
-                    + Point {
-                        x: px(0.),
-                        y: -px(8.),
-                    };
-
-                deferred(
-                    anchored()
-                        .snap_to_window_with_margin(px(8.))
-                        .anchor(Corner::BottomLeft)
-                        .position(position)
-                        .child(
-                            v_flex()
-                                .occlude()
-                                .w(bounds.size.width)
-                                .gap_2()
-                                .p_3()
-                                .rounded(px(12.))
-                                .border_1()
-                                .border_color(theme.border)
-                                .bg(theme.popover)
-                                .shadow_lg()
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(theme.muted_foreground)
-                                        .child("Available Commands:"),
-                                )
-                                .children(commands.into_iter().enumerate().map(
-                                    |(idx, command)| {
-                                        let row = h_flex()
-                                            .w_full()
-                                            .gap_3()
-                                            .items_center()
-                                            .py_1()
-                                            .child(
-                                                div()
-                                                    .w(px(140.))
-                                                    .text_sm()
-                                                    .font_family(
-                                                        "Monaco, 'Courier New', monospace",
-                                                    )
-                                                    .text_color(theme.popover_foreground)
-                                                    .child(format!("/{}", command.name)),
-                                            )
-                                            .child(
-                                                div()
-                                                    .flex_1()
-                                                    .text_sm()
-                                                    .text_color(theme.muted_foreground)
-                                                    .overflow_x_hidden()
-                                                    .text_ellipsis()
-                                                    .child(command.description),
-                                            );
-
-                                        row.when(idx + 1 < command_count, |row| {
-                                            row.border_b_1().border_color(theme.border)
-                                        })
-                                    },
-                                )),
-                        ),
-                )
-                .with_priority(1)
+            CommandSuggestionsPopover::new(self.command_suggestions)
+                .anchor_bounds(bounds)
+                .visible(true)
                 .into_any_element()
-            })
         } else {
-            None
+            div().into_any_element()
         };
 
         v_flex()
@@ -709,8 +644,6 @@ impl RenderOnce for ChatInputBox {
                             }),
                     ),
             )
-            .when_some(command_popover, |this, command_popover| {
-                this.child(command_popover)
-            })
+            .child(command_popover)
     }
 }

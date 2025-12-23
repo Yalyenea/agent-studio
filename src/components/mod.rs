@@ -2,6 +2,7 @@ mod agent_message;
 mod agent_select;
 mod agent_todo_list;
 mod chat_input_box;
+mod command_suggestions_popover;
 mod file_picker;
 mod permission_request;
 mod status_indicator;
@@ -16,6 +17,8 @@ pub use agent_select::AgentItem;
 pub use agent_todo_list::{AgentTodoList, AgentTodoListView, PlanMeta};
 
 pub use chat_input_box::ChatInputBox;
+
+pub use command_suggestions_popover::CommandSuggestionsPopover;
 
 pub use file_picker::{FileItem, FilePickerDelegate};
 
