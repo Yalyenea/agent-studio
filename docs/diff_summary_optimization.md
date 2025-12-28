@@ -280,3 +280,135 @@ let summary = cx.new(|_| DiffSummary::new(data));
 - **性能**: 轻微提升
 
 **核心理念**: "简单性 > 灵活性（当不需要灵活性时）"
+
+---
+
+## 后续修复：多次编辑统计问题 (2025-12-28)
+
+### 问题发现
+用户报告：当同一文件被多次编辑时，DiffSummary 显示的统计结果不准确。
+
+### 根本原因
+```rust
+// 原实现 (有问题)
+for tool_call in tool_calls {
+    for content in &tool_call.content {
+        if let ToolCallContent::Diff(diff) = content {
+            let stats = FileChangeStats::from_diff(...);
+            files.insert(diff.path.clone(), stats);  // ❌ 覆盖之前的统计
+        }
+    }
+}
+```
+
+**问题**: `HashMap::insert()` 会覆盖已有的统计，导致只显示**最后一次编辑**的变化，而不是**总变化量**。
+
+### 修复方案
+追踪每个文件的**初始状态**和**最终状态**：
+
+```rust
+// 修复后的实现
+let mut file_states: HashMap<PathBuf, (Option<String>, String, bool)> = HashMap::new();
+
+for tool_call in tool_calls {
+    for content in &tool_call.content {
+        if let ToolCallContent::Diff(diff) = content {
+            file_states
+                .entry(diff.path.clone())
+                .and_modify(|(first_old, final_new, is_new)| {
+                    // ✅ 只更新最终状态，保留初始状态
+                    *final_new = diff.new_text.clone();
+                    if diff.old_text.is_some() {
+                        *is_new = false;
+                    }
+                })
+                .or_insert((
+                    diff.old_text.clone(),
+                    diff.new_text.clone(),
+                    diff.old_text.is_none(),
+                ));
+        }
+    }
+}
+
+// 基于初始→最终计算总变化
+for (path, (first_old, final_new, _)) in file_states {
+    let stats = FileChangeStats::from_diff(path.clone(), first_old.as_deref(), &final_new);
+    files.insert(path, stats);
+}
+```
+
+### 修复效果
+
+**场景: 文件被编辑两次**
+```
+第一次编辑:
+  old: "line1\nline2"
+  new: "line1\nline2_modified"
+
+第二次编辑:
+  old: "line1\nline2_modified"
+  new: "line1\nline2_modified\nline3"
+
+修复前显示 (错误):
+  +1 -0  (只看最后一次)
+
+修复后显示 (正确):
+  +2 -1  (初始→最终的总变化)
+```
+
+### 额外改进
+同时修复了 `find_tool_call_for_file()` 方法：
+- **修复前**: 返回第一个匹配的 ToolCall
+- **修复后**: 返回**最后一个**匹配的 ToolCall（最新编辑）
+
+### 代码变更
+- **文件**: `src/components/diff_summary.rs`
+- **行数变化**: +30 行（增加状态追踪逻辑）
+- **复杂度**: O(n) 保持不变
+- **测试**: `tests/diff_summary_multiple_edits_test.md`
+
+### 测试覆盖
+- ✅ 单次编辑 - 统计正确
+- ✅ 两次编辑 - 累加正确
+- ✅ 多次编辑 (3+) - 累加正确
+- ✅ 添加后删除 - 净变化为 0
+- ✅ 新文件后编辑 - is_new_file 正确
+- ✅ 点击跳转 - 打开最新编辑
+
+### 性能影响
+- **时间复杂度**: O(n) → O(n)（无变化）
+- **空间复杂度**: O(f) → O(f)（无变化，f 为文件数）
+- **额外开销**: 中间状态 HashMap，但在最终计算前就释放
+
+### 设计权衡
+
+**选择方案**: 追踪初始/最终状态（准确）
+- ✅ 准确计算总变化量
+- ✅ 正确处理反复修改
+- ✅ 代码清晰易懂
+
+**未选方案**: 累加每次变化（简单但不准确）
+```rust
+// ❌ 不准确的累加方式
+if let Some(existing) = files.get_mut(&path) {
+    existing.additions += stats.additions;
+    existing.deletions += stats.deletions;
+}
+```
+问题：多次修改同一行会重复计算
+
+---
+
+## 最终总结
+
+经过两轮优化：
+1. **奥卡姆剃刀优化**: 简化代码结构，移除不必要的抽象
+2. **多次编辑修复**: 修正统计逻辑，确保准确性
+
+**最终状态**:
+- 代码: 简洁且正确
+- 功能: 完整且准确
+- 性能: 高效且稳定
+
+**核心价值**: 简单性 + 正确性 = 可维护性

@@ -25,11 +25,13 @@ A full-featured desktop application built with [GPUI Component](https://github.c
 - **Tree-sitter Integration**: Syntax highlighting for multiple languages
 - **Task Management**: Collapsible task list with status tracking
 - **Conversation UI**: Rich message components with markdown support and streaming
+- **Diff Summary**: File change statistics and visualization with collapsible view
 
 ### 🏗️ **Architecture Highlights**
 - **Service Layer Pattern**: Separation of business logic from UI components
 - **Event Bus System**: Thread-safe message distribution across components
 - **Modular Design**: Clean separation of concerns with well-organized directory structure
+- **Diff Visualization**: Context-aware diff display with collapsed unchanged sections
 
 ## 🚀 Quick Start
 
@@ -69,7 +71,7 @@ cargo check
 
 **Note**: This project uses Git dependencies for GPUI and gpui-component. The first build may take some time as Cargo fetches and compiles dependencies.
 
-## 📖 Usage
+### 📖 Usage
 
 ### First Launch
 
@@ -77,6 +79,15 @@ On first launch, AgentX displays a welcome panel. You can:
 1. Create a new conversation with an AI agent
 2. Explore the interface and dock layout
 3. Customize themes and settings
+
+### Diff Summary Feature
+
+The application now includes a comprehensive diff summary feature:
+- **Automatic Tracking**: All file changes during a session are automatically tracked
+- **Visual Summary**: Changes are displayed with file counts, additions (+) and deletions (-)
+- **Click Navigation**: Click on files in the summary to jump directly to the change details
+- **Context Collapsing**: Large unchanged code sections are collapsed to focus on actual changes
+- **New File Detection**: New files are clearly marked with "NEW" indicators
 
 ### Interface Layout
 
@@ -100,6 +111,8 @@ On first launch, AgentX displays a welcome panel. You can:
 - **Send Message**: Type in chat input → Press Enter or click Send
 - **Switch Theme**: Menu Bar → Themes → Select theme/mode
 - **Toggle Panels**: Use View menu or panel visibility toggles
+- **View Diff Summary**: File changes automatically shown in conversation panel with collapsible view
+- **Expand/Collapse Diffs**: Click on diff sections to show/hide unchanged code context
 
 ### Keyboard Shortcuts
 
@@ -328,6 +341,7 @@ This is a **standalone project** with Git-based dependencies.
 - **tree-sitter-navi** `0.2.2` - Syntax highlighting
 - **lsp-types** `0.97.0` - Language Server Protocol types
 - **color-lsp** `0.2.0` - LSP for color support
+- **similar** `2.6.0` - Text diff calculation for change statistics
 
 ### Utilities
 - **serde**, **serde_json** - Serialization/deserialization

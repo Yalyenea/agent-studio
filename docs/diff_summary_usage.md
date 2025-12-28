@@ -200,6 +200,83 @@ let stats = FileChangeStats::from_diff(
 let total = stats.total_changes();
 ```
 
+## 多次编辑处理
+
+### 问题说明
+当同一文件在一个会话中被多次编辑时，需要正确统计**从初始状态到最终状态**的总变化量，而不是只显示最后一次编辑的变化。
+
+### 解决方案
+组件自动追踪每个文件的：
+- **初始状态**: 第一次编辑的 `old_text`
+- **最终状态**: 最后一次编辑的 `new_text`
+
+然后计算初始到最终的总 diff。
+
+### 示例场景
+
+**场景 1: 文件被编辑两次**
+```
+第一次编辑:
+  old: "line1\nline2"
+  new: "line1\nline2_modified"
+  变化: +1 -1
+
+第二次编辑:
+  old: "line1\nline2_modified"
+  new: "line1\nline2_modified\nline3"
+  变化: +1
+
+总统计 (初始→最终):
+  initial: "line1\nline2"
+  final:   "line1\nline2_modified\nline3"
+  总变化: +2 -1 ✅ 正确
+
+错误统计 (只看最后一次):
+  总变化: +1 -0 ❌ 不准确
+```
+
+**场景 2: 添加后删除**
+```
+第一次: 添加 line2
+  old: "line1\nline3"
+  new: "line1\nline2\nline3"
+
+第二次: 删除 line2
+  old: "line1\nline2\nline3"
+  new: "line1\nline3"
+
+总统计:
+  initial: "line1\nline3"
+  final:   "line1\nline3"
+  总变化: +0 -0 ✅ 净变化为 0
+```
+
+### 点击跳转行为
+当文件被多次编辑时，点击文件行会打开一个**合并后的 diff 视图**，显示从初始状态到最终状态的总变化，而不是最后一次编辑。
+
+**合并 diff 特性**:
+- **标题**: 显示 "Edit filename.rs (N times)" 表明文件被编辑了 N 次
+- **内容**: 显示初始状态 → 最终状态的完整 diff
+- **状态**: 标记为 Completed
+- **工具调用 ID**: `merged-{filepath}` 格式
+
+**示例**:
+```
+文件: test.rs 被编辑 3 次
+
+第 1 次: "A\nB" → "A\nB_v1"
+第 2 次: "A\nB_v1" → "A\nB_v2"
+第 3 次: "A\nB_v2" → "A\nB_v2\nC"
+
+点击后显示合并 diff:
+  标题: "Edit test.rs (3 times)"
+  old_text: "A\nB"        (初始状态)
+  new_text: "A\nB_v2\nC"  (最终状态)
+  总变化: +2 -1
+```
+
+单次编辑的文件仍然显示原始的 ToolCall。
+
 ## UI 效果
 
 组件渲染效果：

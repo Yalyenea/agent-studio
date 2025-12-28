@@ -11,7 +11,7 @@ use similar::{ChangeTag, TextDiff};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use agent_client_protocol::{ToolCall, ToolCallContent};
+use agent_client_protocol::{Diff, ToolCall, ToolCallContent, ToolCallId, ToolCallStatus};
 
 /// Statistics for a single file's changes
 #[derive(Debug, Clone, Default)]
@@ -71,43 +71,110 @@ pub struct DiffSummaryData {
     pub files: HashMap<PathBuf, FileChangeStats>,
     /// Original tool calls (for finding the ToolCall when clicking)
     pub tool_calls: Vec<ToolCall>,
+    /// Merged file states: (initial old_text, final new_text) for multi-edit files
+    merged_states: HashMap<PathBuf, (Option<String>, String)>,
 }
 
 impl DiffSummaryData {
     /// Extract diff statistics from a list of tool calls
+    /// Correctly handles multiple edits to the same file by tracking initial and final states
     pub fn from_tool_calls(tool_calls: &[ToolCall]) -> Self {
-        let mut files = HashMap::new();
+        // Track initial state (first old_text) and final state (last new_text) for each file
+        let mut file_states: HashMap<PathBuf, (Option<String>, String, bool)> = HashMap::new();
 
         for tool_call in tool_calls {
             for content in &tool_call.content {
                 if let ToolCallContent::Diff(diff) = content {
-                    let stats = FileChangeStats::from_diff(
-                        diff.path.clone(),
-                        diff.old_text.as_deref(),
-                        &diff.new_text,
-                    );
-                    files.insert(diff.path.clone(), stats);
+                    file_states
+                        .entry(diff.path.clone())
+                        .and_modify(|(_first_old, final_new, is_new)| {
+                            // Update only the final state, preserve the initial state
+                            *final_new = diff.new_text.clone();
+                            // If any edit has old_text, it's not a new file
+                            if diff.old_text.is_some() {
+                                *is_new = false;
+                            }
+                        })
+                        .or_insert((
+                            diff.old_text.clone(),
+                            diff.new_text.clone(),
+                            diff.old_text.is_none(),
+                        ));
                 }
             }
+        }
+
+        // Calculate final statistics from initial to final state
+        let mut files = HashMap::new();
+        let mut merged_states = HashMap::new();
+
+        for (path, (first_old, final_new, _is_new)) in file_states {
+            let stats = FileChangeStats::from_diff(
+                path.clone(),
+                first_old.as_deref(),
+                &final_new,
+            );
+            files.insert(path.clone(), stats);
+            // Store merged state for creating synthetic ToolCall later
+            merged_states.insert(path, (first_old, final_new));
         }
 
         Self {
             files,
             tool_calls: tool_calls.to_vec(),
+            merged_states,
         }
     }
 
-    /// Find the ToolCall that contains a diff for the given file path
+    /// Find or create a ToolCall for the given file path
+    /// For files edited multiple times, returns a synthetic ToolCall with merged diff (initial → final)
+    /// For files edited once, returns the original ToolCall
     pub fn find_tool_call_for_file(&self, path: &PathBuf) -> Option<ToolCall> {
+        // Count how many times this file was edited
+        let mut edit_count = 0;
+        let mut last_tool_call = None;
+
         for tool_call in &self.tool_calls {
             for content in &tool_call.content {
                 if let ToolCallContent::Diff(diff) = content {
                     if &diff.path == path {
-                        return Some(tool_call.clone());
+                        edit_count += 1;
+                        last_tool_call = Some(tool_call.clone());
                     }
                 }
             }
         }
+
+        // If edited only once, return the original ToolCall
+        if edit_count == 1 {
+            return last_tool_call;
+        }
+
+        // If edited multiple times, create a synthetic ToolCall with merged diff
+        if edit_count > 1 {
+            if let Some((first_old, final_new)) = self.merged_states.get(path) {
+                // Create a merged Diff showing initial → final
+                let merged_diff = Diff::new(path.clone(), final_new.clone())
+                    .old_text(first_old.clone());
+
+                // Create a synthetic ToolCall
+                let filename = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown");
+
+                let mut synthetic_tool_call = ToolCall::new(
+                    ToolCallId::from(format!("merged-{}", path.display())),
+                    format!("Edit {} ({} times)", filename, edit_count),
+                );
+
+                synthetic_tool_call.status = ToolCallStatus::Completed;
+                synthetic_tool_call.content = vec![ToolCallContent::Diff(merged_diff)];
+
+                return Some(synthetic_tool_call);
+            }
+        }
+
         None
     }
 
