@@ -1,7 +1,7 @@
 use agent_client_protocol::ToolCall;
 use gpui::{prelude::FluentBuilder, *};
 use gpui_component::{
-    ActiveTheme, IconName, Sizable, WindowExt,
+    ActiveTheme, IconName, WindowExt,
     button::{Button, ButtonVariants},
     dock::{Panel, PanelControl, PanelEvent, PanelInfo, PanelState, TitleStyle},
     group_box::{GroupBox, GroupBoxVariants as _},
@@ -274,6 +274,32 @@ impl DockPanelContainer {
         });
 
         view
+    }
+
+    pub fn replace_with_conversation_session(
+        &mut self,
+        session_id: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let name = ConversationPanel::title();
+        let description = ConversationPanel::description();
+        let story = match session_id {
+            Some(session_id) => ConversationPanel::view_for_session(session_id, window, cx),
+            None => ConversationPanel::view(window, cx),
+        };
+        let story_klass = ConversationPanel::klass();
+
+        self.story = Some(story.into());
+        self.story_klass = Some(story_klass.into());
+        self.on_active = Some(ConversationPanel::on_active_any);
+        self.closable = ConversationPanel::closable();
+        self.zoomable = ConversationPanel::zoomable();
+        self.name = name.into();
+        self.description = description.into();
+        self.title_bg = ConversationPanel::title_bg();
+        self.paddings = ConversationPanel::paddings();
+        cx.notify();
     }
 
     /// Create a WelcomePanel for a specific workspace
