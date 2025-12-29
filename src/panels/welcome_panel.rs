@@ -379,10 +379,22 @@ impl WelcomePanel {
                 log::info!("[WelcomePanel] Agent updated: {}", name);
                 // No action needed - agent name hasn't changed
             }
-            AgentConfigEvent::AgentConfigReloaded { .. } => {
+            AgentConfigEvent::ConfigReloaded { .. } => {
                 log::info!("[WelcomePanel] Agent config reloaded");
                 // Force full refresh
                 self.has_agents = false;
+            }
+            // Model, MCP Server, and Command events don't affect WelcomePanel
+            AgentConfigEvent::ModelAdded { .. }
+            | AgentConfigEvent::ModelUpdated { .. }
+            | AgentConfigEvent::ModelRemoved { .. }
+            | AgentConfigEvent::McpServerAdded { .. }
+            | AgentConfigEvent::McpServerUpdated { .. }
+            | AgentConfigEvent::McpServerRemoved { .. }
+            | AgentConfigEvent::CommandAdded { .. }
+            | AgentConfigEvent::CommandUpdated { .. }
+            | AgentConfigEvent::CommandRemoved { .. } => {
+                // No action needed for non-agent config changes
             }
         }
 

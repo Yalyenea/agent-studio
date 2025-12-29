@@ -95,6 +95,42 @@ impl AgentConfigService {
         }
     }
 
+    /// List all configured models
+    pub async fn list_models(&self) -> Vec<(String, crate::core::config::ModelConfig)> {
+        let config = self.config.read().await;
+        let mut models: Vec<_> = config
+            .models
+            .iter()
+            .map(|(name, cfg)| (name.clone(), cfg.clone()))
+            .collect();
+        models.sort_by(|a, b| a.0.cmp(&b.0));
+        models
+    }
+
+    /// List all configured MCP servers
+    pub async fn list_mcp_servers(&self) -> Vec<(String, crate::core::config::McpServerConfig)> {
+        let config = self.config.read().await;
+        let mut mcp_servers: Vec<_> = config
+            .mcp_servers
+            .iter()
+            .map(|(name, cfg)| (name.clone(), cfg.clone()))
+            .collect();
+        mcp_servers.sort_by(|a, b| a.0.cmp(&b.0));
+        mcp_servers
+    }
+
+    /// List all configured commands
+    pub async fn list_commands(&self) -> Vec<(String, crate::core::config::CommandConfig)> {
+        let config = self.config.read().await;
+        let mut commands: Vec<_> = config
+            .commands
+            .iter()
+            .map(|(name, cfg)| (name.clone(), cfg.clone()))
+            .collect();
+        commands.sort_by(|a, b| a.0.cmp(&b.0));
+        commands
+    }
+
     // ========== Validation ==========
 
     /// Validate that a command exists and is executable
@@ -284,11 +320,17 @@ impl AgentConfigService {
         // Update config
         {
             let mut current_config = self.config.write().await;
-            current_config.models.insert(name.clone(), config);
+            current_config.models.insert(name.clone(), config.clone());
         }
 
         // Save to file
         self.save_to_file().await?;
+
+        // Publish event
+        self.event_bus.publish(AgentConfigEvent::ModelAdded {
+            name: name.clone(),
+            config: config.clone(),
+        });
 
         log::info!("Successfully added model '{}'", name);
         Ok(())
@@ -307,11 +349,17 @@ impl AgentConfigService {
         // Update config
         {
             let mut current_config = self.config.write().await;
-            current_config.models.insert(name.to_string(), config);
+            current_config.models.insert(name.to_string(), config.clone());
         }
 
         // Save to file
         self.save_to_file().await?;
+
+        // Publish event
+        self.event_bus.publish(AgentConfigEvent::ModelUpdated {
+            name: name.to_string(),
+            config: config.clone(),
+        });
 
         log::info!("Successfully updated model '{}'", name);
         Ok(())
@@ -336,6 +384,11 @@ impl AgentConfigService {
         // Save to file
         self.save_to_file().await?;
 
+        // Publish event
+        self.event_bus.publish(AgentConfigEvent::ModelRemoved {
+            name: name.to_string(),
+        });
+
         log::info!("Successfully removed model '{}'", name);
         Ok(())
     }
@@ -355,11 +408,17 @@ impl AgentConfigService {
         // Update config
         {
             let mut current_config = self.config.write().await;
-            current_config.mcp_servers.insert(name.clone(), config);
+            current_config.mcp_servers.insert(name.clone(), config.clone());
         }
 
         // Save to file
         self.save_to_file().await?;
+
+        // Publish event
+        self.event_bus.publish(AgentConfigEvent::McpServerAdded {
+            name: name.clone(),
+            config: config.clone(),
+        });
 
         log::info!("Successfully added MCP server '{}'", name);
         Ok(())
@@ -378,11 +437,17 @@ impl AgentConfigService {
         // Update config
         {
             let mut current_config = self.config.write().await;
-            current_config.mcp_servers.insert(name.to_string(), config);
+            current_config.mcp_servers.insert(name.to_string(), config.clone());
         }
 
         // Save to file
         self.save_to_file().await?;
+
+        // Publish event
+        self.event_bus.publish(AgentConfigEvent::McpServerUpdated {
+            name: name.to_string(),
+            config: config.clone(),
+        });
 
         log::info!("Successfully updated MCP server '{}'", name);
         Ok(())
@@ -407,6 +472,11 @@ impl AgentConfigService {
         // Save to file
         self.save_to_file().await?;
 
+        // Publish event
+        self.event_bus.publish(AgentConfigEvent::McpServerRemoved {
+            name: name.to_string(),
+        });
+
         log::info!("Successfully removed MCP server '{}'", name);
         Ok(())
     }
@@ -426,11 +496,17 @@ impl AgentConfigService {
         // Update config
         {
             let mut current_config = self.config.write().await;
-            current_config.commands.insert(name.clone(), config);
+            current_config.commands.insert(name.clone(), config.clone());
         }
 
         // Save to file
         self.save_to_file().await?;
+
+        // Publish event
+        self.event_bus.publish(AgentConfigEvent::CommandAdded {
+            name: name.clone(),
+            config: config.clone(),
+        });
 
         log::info!("Successfully added command '{}'", name);
         Ok(())
@@ -449,11 +525,17 @@ impl AgentConfigService {
         // Update config
         {
             let mut current_config = self.config.write().await;
-            current_config.commands.insert(name.to_string(), config);
+            current_config.commands.insert(name.to_string(), config.clone());
         }
 
         // Save to file
         self.save_to_file().await?;
+
+        // Publish event
+        self.event_bus.publish(AgentConfigEvent::CommandUpdated {
+            name: name.to_string(),
+            config: config.clone(),
+        });
 
         log::info!("Successfully updated command '{}'", name);
         Ok(())
@@ -477,6 +559,11 @@ impl AgentConfigService {
 
         // Save to file
         self.save_to_file().await?;
+
+        // Publish event
+        self.event_bus.publish(AgentConfigEvent::CommandRemoved {
+            name: name.to_string(),
+        });
 
         log::info!("Successfully removed command '{}'", name);
         Ok(())
@@ -565,10 +652,10 @@ impl AgentConfigService {
             *config = new_config.clone();
         }
 
-        // Publish reload event
+        // Publish reload event with full config
         self.event_bus
-            .publish(AgentConfigEvent::AgentConfigReloaded {
-                servers: new_config.agent_servers.clone(),
+            .publish(AgentConfigEvent::ConfigReloaded {
+                config: new_config,
             });
 
         log::info!("Configuration reloaded from: {:?}", self.config_path);

@@ -24,7 +24,7 @@ pub use panels::{
 // Re-export from core module
 pub use core::{
     agent::{AgentHandle, AgentManager, PermissionStore},
-    config::{AgentProcessConfig, Config, Settings},
+    config::{AgentProcessConfig, Config},
     event_bus::{
         PermissionBusContainer, PermissionRequestEvent, SessionUpdateBusContainer,
         SessionUpdateEvent,

@@ -88,14 +88,12 @@ pub struct SettingsPanel {
     size: Size,
     update_status: UpdateStatus,
     update_manager: UpdateManager,
-    // Agent configuration state
-    agent_configs: HashMap<String, AgentProcessConfig>,
-    upload_dir: String,
-    config_path: String,
-    // New configuration states
-    model_configs: HashMap<String, ModelConfig>,
-    mcp_server_configs: HashMap<String, McpServerConfig>,
-    command_configs: HashMap<String, CommandConfig>,
+    // Cached configuration state (synchronized by events)
+    cached_agents: HashMap<String, AgentProcessConfig>,
+    cached_models: HashMap<String, ModelConfig>,
+    cached_mcp_servers: HashMap<String, McpServerConfig>,
+    cached_commands: HashMap<String, CommandConfig>,
+    cached_upload_dir: PathBuf,
 }
 
 struct OpenURLSettingField {
@@ -152,54 +150,38 @@ impl SettingsPanel {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         cx.set_global::<AppSettings>(AppSettings::default());
 
-        // Initialize with empty state - will be loaded async
-        let agent_configs = HashMap::new();
-        let upload_dir = String::new();
-        let config_path = String::new();
-
         let panel = Self {
             focus_handle: cx.focus_handle(),
             group_variant: GroupBoxVariant::Outline,
             size: Size::default(),
             update_status: UpdateStatus::Idle,
             update_manager: UpdateManager::default(),
-            agent_configs,
-            upload_dir,
-            config_path,
-            model_configs: HashMap::new(),
-            mcp_server_configs: HashMap::new(),
-            command_configs: HashMap::new(),
+            cached_agents: HashMap::new(),
+            cached_models: HashMap::new(),
+            cached_mcp_servers: HashMap::new(),
+            cached_commands: HashMap::new(),
+            cached_upload_dir: PathBuf::from("."),
         };
 
-        // Load agent configs asynchronously
+        // Load all configuration from service asynchronously
         let weak_entity = cx.entity().downgrade();
         if let Some(service) = AppState::global(cx).agent_config_service() {
             let service = service.clone();
             cx.spawn_in(window, async move |_this, window| {
                 let agents = service.list_agents().await;
+                let models = service.list_models().await;
+                let mcp_servers = service.list_mcp_servers().await;
+                let commands = service.list_commands().await;
                 let upload_dir = service.get_upload_dir().await;
-
-                // Load full config to get models, MCP servers, and commands
-                // Use std::fs (synchronous) instead of tokio::fs
-                let config_path = service.config_path().clone();
-                let (models, mcp_servers, commands) = if let Ok(config_str) = std::fs::read_to_string(&config_path) {
-                    if let Ok(config) = serde_json::from_str::<crate::core::config::Config>(&config_str) {
-                        (config.models, config.mcp_servers, config.commands)
-                    } else {
-                        (std::collections::HashMap::new(), std::collections::HashMap::new(), std::collections::HashMap::new())
-                    }
-                } else {
-                    (std::collections::HashMap::new(), std::collections::HashMap::new(), std::collections::HashMap::new())
-                };
 
                 _ = window.update(|_window, cx| {
                     if let Some(entity) = weak_entity.upgrade() {
                         entity.update(cx, |this, cx| {
-                            this.agent_configs = agents.into_iter().collect();
-                            this.upload_dir = upload_dir.to_string_lossy().to_string();
-                            this.model_configs = models;
-                            this.mcp_server_configs = mcp_servers;
-                            this.command_configs = commands;
+                            this.cached_agents = agents.into_iter().collect();
+                            this.cached_models = models.into_iter().collect();
+                            this.cached_mcp_servers = mcp_servers.into_iter().collect();
+                            this.cached_commands = commands.into_iter().collect();
+                            this.cached_upload_dir = upload_dir;
                             cx.notify();
                         });
                     }
@@ -207,34 +189,6 @@ impl SettingsPanel {
             })
             .detach();
         }
-
-        // Load config path from AppState
-        let config_path = AppState::global(cx)
-            .agent_config_service()
-            .and_then(|_| {
-                // Get config path from Settings or default
-                Some(
-                    std::env::current_dir()
-                        .ok()?
-                        .join("config.json")
-                        .to_string_lossy()
-                        .to_string(),
-                )
-            })
-            .unwrap_or_default();
-
-        let weak_entity_path = cx.entity().downgrade();
-        cx.spawn_in(window, async move |_this, window| {
-            _ = window.update(|_window, cx| {
-                if let Some(entity) = weak_entity_path.upgrade() {
-                    entity.update(cx, |this, cx| {
-                        this.config_path = config_path;
-                        cx.notify();
-                    });
-                }
-            });
-        })
-        .detach();
 
         // Subscribe to AgentConfigBus for dynamic updates
         let agent_config_bus = AppState::global(cx).agent_config_bus.clone();
@@ -280,7 +234,7 @@ impl SettingsPanel {
         // Get existing config if editing
         let existing_config = agent_name
             .as_ref()
-            .and_then(|name| self.agent_configs.get(name).cloned());
+            .and_then(|name| self.cached_agents.get(name).cloned());
 
         // Create input states
         let name_input = cx.new(|cx| {
@@ -551,29 +505,66 @@ impl SettingsPanel {
     ) {
         use crate::core::event_bus::agent_config_bus::AgentConfigEvent;
 
-        log::info!("[SettingsPanel] Received agent config event: {:?}", event);
+        log::info!("[SettingsPanel] Processing config event: {:?}", event);
 
-        // Reload all configs from service asynchronously
-        if let Some(service) = AppState::global(cx).agent_config_service() {
-            let service = service.clone();
-            let weak_entity = cx.entity().downgrade();
+        // Update cache based on event type
+        match event {
+            // Agent events
+            AgentConfigEvent::AgentAdded { name, config } => {
+                self.cached_agents.insert(name.clone(), config.clone());
+            }
+            AgentConfigEvent::AgentUpdated { name, config } => {
+                self.cached_agents.insert(name.clone(), config.clone());
+            }
+            AgentConfigEvent::AgentRemoved { name } => {
+                self.cached_agents.remove(name);
+            }
 
-            cx.spawn(async move |_entity, cx| {
-                let agents = service.list_agents().await;
-                let upload_dir = service.get_upload_dir().await;
+            // Model events
+            AgentConfigEvent::ModelAdded { name, config } => {
+                self.cached_models.insert(name.clone(), config.clone());
+            }
+            AgentConfigEvent::ModelUpdated { name, config } => {
+                self.cached_models.insert(name.clone(), config.clone());
+            }
+            AgentConfigEvent::ModelRemoved { name } => {
+                self.cached_models.remove(name);
+            }
 
-                _ = cx.update(|cx| {
-                    if let Some(entity) = weak_entity.upgrade() {
-                        entity.update(cx, |this, cx| {
-                            this.agent_configs = agents.into_iter().collect();
-                            this.upload_dir = upload_dir.to_string_lossy().to_string();
-                            cx.notify();
-                        });
-                    }
-                });
-            })
-            .detach();
+            // MCP Server events
+            AgentConfigEvent::McpServerAdded { name, config } => {
+                self.cached_mcp_servers.insert(name.clone(), config.clone());
+            }
+            AgentConfigEvent::McpServerUpdated { name, config } => {
+                self.cached_mcp_servers.insert(name.clone(), config.clone());
+            }
+            AgentConfigEvent::McpServerRemoved { name } => {
+                self.cached_mcp_servers.remove(name);
+            }
+
+            // Command events
+            AgentConfigEvent::CommandAdded { name, config } => {
+                self.cached_commands.insert(name.clone(), config.clone());
+            }
+            AgentConfigEvent::CommandUpdated { name, config } => {
+                self.cached_commands.insert(name.clone(), config.clone());
+            }
+            AgentConfigEvent::CommandRemoved { name } => {
+                self.cached_commands.remove(name);
+            }
+
+            // Full reload
+            AgentConfigEvent::ConfigReloaded { config } => {
+                self.cached_agents = config.agent_servers.clone();
+                self.cached_models = config.models.clone();
+                self.cached_mcp_servers = config.mcp_servers.clone();
+                self.cached_commands = config.commands.clone();
+                self.cached_upload_dir = config.upload_dir.clone();
+            }
         }
+
+        // Trigger re-render
+        cx.notify();
     }
 
     fn check_for_updates(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
@@ -658,7 +649,7 @@ impl SettingsPanel {
                                         _ = cx.update(|cx| {
                                             if let Some(panel) = entity.upgrade() {
                                                 panel.update(cx, |this, cx| {
-                                                    this.model_configs.insert(name_clone, config);
+                                                    this.cached_models.insert(name_clone, config);
                                                     cx.notify();
                                                 });
                                             }
@@ -689,7 +680,7 @@ impl SettingsPanel {
     }
 
     fn show_edit_model_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>, model_name: String) {
-        let config = self.model_configs.get(&model_name).cloned();
+        let config = self.cached_models.get(&model_name).cloned();
         if config.is_none() {
             log::warn!("Model config not found: {}", model_name);
             return;
@@ -764,7 +755,7 @@ impl SettingsPanel {
                                         _ = cx.update(|cx| {
                                             if let Some(panel) = entity.upgrade() {
                                                 panel.update(cx, |this, cx| {
-                                                    this.model_configs.insert(model_name_for_async, config);
+                                                    this.cached_models.insert(model_name_for_async, config);
                                                     cx.notify();
                                                 });
                                             }
@@ -824,7 +815,7 @@ impl SettingsPanel {
                                         _ = cx.update(|cx| {
                                             if let Some(panel) = entity.upgrade() {
                                                 panel.update(cx, |this, cx| {
-                                                    this.model_configs.remove(&name);
+                                                    this.cached_models.remove(&name);
                                                     cx.notify();
                                                 });
                                             }
@@ -921,12 +912,13 @@ impl SettingsPanel {
     }
 
     fn show_edit_mcp_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>, server_name: String) {
-        let config = self.mcp_server_configs.get(&server_name).cloned();
+        let config = self.cached_mcp_servers.get(&server_name).cloned();
         if config.is_none() {
             log::warn!("MCP server config not found: {}", server_name);
             return;
         }
         let config = config.unwrap();
+        let entity = cx.entity().downgrade();
 
         let desc_input = cx.new(|cx| {
             let mut state = InputState::new(window, cx);
@@ -934,7 +926,7 @@ impl SettingsPanel {
             state
         });
 
-        window.open_dialog(cx, move |dialog, _window, cx| {
+        window.open_dialog(cx, move |dialog, _window, _cx| {
             dialog
                 .title(format!("Edit MCP Server: {}", server_name))
                 .confirm()
@@ -944,6 +936,7 @@ impl SettingsPanel {
                     let server_name = server_name.clone();
                     let enabled = config.enabled;
                     let config_map = config.config.clone();
+                    let entity = entity.clone();
 
                     move |_, _window, cx| {
                         let desc = desc_input.read(cx).text().to_string().trim().to_string();
@@ -957,12 +950,21 @@ impl SettingsPanel {
                                 description: desc,
                                 config: config_map.clone(),
                             };
+                            let entity = entity.clone();
 
                             cx.spawn(async move |cx| {
-                                match service.update_mcp_server(&server_name_for_async, config).await {
+                                match service.update_mcp_server(&server_name_for_async, config.clone()).await {
                                     Ok(_) => {
                                         log::info!("Successfully updated MCP server: {}", server_name_for_async);
-                                        _ = cx.update(|_cx| {});
+                                        // Update UI
+                                        _ = cx.update(|cx| {
+                                            if let Some(panel) = entity.upgrade() {
+                                                panel.update(cx, |this, cx| {
+                                                    this.cached_mcp_servers.insert(server_name_for_async, config);
+                                                    cx.notify();
+                                                });
+                                            }
+                                        });
                                     }
                                     Err(e) => {
                                         log::error!("Failed to update MCP server: {}", e);
@@ -1092,12 +1094,13 @@ impl SettingsPanel {
     }
 
     fn show_edit_command_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>, command_name: String) {
-        let config = self.command_configs.get(&command_name).cloned();
+        let config = self.cached_commands.get(&command_name).cloned();
         if config.is_none() {
             log::warn!("Command config not found: {}", command_name);
             return;
         }
         let config = config.unwrap();
+        let entity = cx.entity().downgrade();
 
         let desc_input = cx.new(|cx| {
             let mut state = InputState::new(window, cx);
@@ -1110,7 +1113,7 @@ impl SettingsPanel {
             state
         });
 
-        window.open_dialog(cx, move |dialog, _window, cx| {
+        window.open_dialog(cx, move |dialog, _window, _cx| {
             dialog
                 .title(format!("Edit Command: /{}", command_name))
                 .confirm()
@@ -1119,6 +1122,7 @@ impl SettingsPanel {
                     let desc_input = desc_input.clone();
                     let template_input = template_input.clone();
                     let command_name = command_name.clone();
+                    let entity = entity.clone();
 
                     move |_, _window, cx| {
                         let desc = desc_input.read(cx).text().to_string().trim().to_string();
@@ -1137,12 +1141,21 @@ impl SettingsPanel {
                                 description: desc,
                                 template,
                             };
+                            let entity = entity.clone();
 
                             cx.spawn(async move |cx| {
-                                match service.update_command(&command_name_for_async, config).await {
+                                match service.update_command(&command_name_for_async, config.clone()).await {
                                     Ok(_) => {
                                         log::info!("Successfully updated command: {}", command_name_for_async);
-                                        _ = cx.update(|_cx| {});
+                                        // Update UI
+                                        _ = cx.update(|cx| {
+                                            if let Some(panel) = entity.upgrade() {
+                                                panel.update(cx, |this, cx| {
+                                                    this.cached_commands.insert(command_name_for_async, config);
+                                                    cx.notify();
+                                                });
+                                            }
+                                        });
                                     }
                                     Err(e) => {
                                         log::error!("Failed to update command: {}", e);
@@ -1606,12 +1619,10 @@ impl SettingsPanel {
                                 SettingField::render({
                                     let view = view.clone();
                                     move |_options, _window, cx| {
-                                        let config_path = view.read(cx).config_path.clone();
-                                        let display = if config_path.is_empty() {
-                                            "Not configured".to_string()
-                                        } else {
-                                            config_path
-                                        };
+                                        let config_path = AppState::global(cx)
+                                            .agent_config_service()
+                                            .map(|s| s.config_path().to_string_lossy().to_string())
+                                            .unwrap_or_else(|| "Not configured".to_string());
 
                                         v_flex()
                                             .w_full()
@@ -1621,7 +1632,7 @@ impl SettingsPanel {
                                                     .w_full()
                                                     .overflow_x_hidden()
                                                     .child(
-                                                        Label::new(display)
+                                                        Label::new(config_path)
                                                             .text_sm()
                                                             .text_color(cx.theme().muted_foreground)
                                                             .whitespace_nowrap()
@@ -1669,7 +1680,7 @@ impl SettingsPanel {
                                 SettingField::render({
                                     let view = view.clone();
                                     move |_options, _window, cx| {
-                                        let upload_dir = view.read(cx).upload_dir.clone();
+                                        let upload_dir = view.read(cx).cached_upload_dir.to_string_lossy().to_string();
                                         let display = if upload_dir.is_empty() {
                                             "Not configured".to_string()
                                         } else {
@@ -1697,7 +1708,7 @@ impl SettingsPanel {
                         .item(SettingItem::render({
                             let view = view.clone();
                             move |_options, window, cx| {
-                                let agent_configs = view.read(cx).agent_configs.clone();
+                                let agent_configs = view.read(cx).cached_agents.clone();
 
                                 let mut content = v_flex()
                                     .w_full()
@@ -1861,7 +1872,7 @@ impl SettingsPanel {
                         .item(SettingItem::render({
                             let view = view.clone();
                             move |_options, _window, cx| {
-                                let model_configs = view.read(cx).model_configs.clone();
+                                let model_configs = view.read(cx).cached_models.clone();
 
                                 let mut content = v_flex()
                                     .w_full()
@@ -2008,7 +2019,7 @@ impl SettingsPanel {
                         .item(SettingItem::render({
                             let view = view.clone();
                             move |_options, _window, cx| {
-                                let mcp_configs = view.read(cx).mcp_server_configs.clone();
+                                let mcp_configs = view.read(cx).cached_mcp_servers.clone();
 
                                 let mut content = v_flex()
                                     .w_full()
@@ -2153,7 +2164,7 @@ impl SettingsPanel {
                         .item(SettingItem::render({
                             let view = view.clone();
                             move |_options, _window, cx| {
-                                let command_configs = view.read(cx).command_configs.clone();
+                                let command_configs = view.read(cx).cached_commands.clone();
 
                                 let mut content = v_flex()
                                     .w_full()
