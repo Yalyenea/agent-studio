@@ -29,15 +29,24 @@ where
 
                 for (name, server_value) in map {
                     // Try to parse as full McpServerConfig first
-                    if let Ok(config) = serde_json::from_value::<McpServerConfig>(server_value.clone()) {
+                    if let Ok(config) =
+                        serde_json::from_value::<McpServerConfig>(server_value.clone())
+                    {
                         result.insert(name, config);
                     }
                     // Try to parse as simplified format
-                    else if let Ok(simplified) = serde_json::from_value::<SimplifiedMcpServer>(server_value.clone()) {
-                        log::info!("Converting simplified MCP config for '{}': {:?}", name, simplified);
+                    else if let Ok(simplified) =
+                        serde_json::from_value::<SimplifiedMcpServer>(server_value.clone())
+                    {
+                        log::info!(
+                            "Converting simplified MCP config for '{}': {:?}",
+                            name,
+                            simplified
+                        );
 
                         // Convert to JSON and then to McpServerStdio via deserialization
-                        let env_vars: Vec<serde_json::Value> = simplified.env
+                        let env_vars: Vec<serde_json::Value> = simplified
+                            .env
                             .into_iter()
                             .map(|(name, value)| {
                                 serde_json::json!({
@@ -56,7 +65,9 @@ where
                         });
 
                         // Deserialize into McpServerStdio
-                        match serde_json::from_value::<agent_client_protocol::McpServerStdio>(stdio_json) {
+                        match serde_json::from_value::<agent_client_protocol::McpServerStdio>(
+                            stdio_json,
+                        ) {
                             Ok(stdio) => {
                                 // Wrap in McpServer enum
                                 let mcp_server = agent_client_protocol::McpServer::Stdio(stdio);
@@ -75,7 +86,11 @@ where
                             }
                         }
                     } else {
-                        log::warn!("Failed to parse MCP server config for '{}', skipping. Value: {:?}", name, server_value);
+                        log::warn!(
+                            "Failed to parse MCP server config for '{}', skipping. Value: {:?}",
+                            name,
+                            server_value
+                        );
                     }
                 }
 

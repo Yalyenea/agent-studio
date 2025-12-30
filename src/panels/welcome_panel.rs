@@ -142,13 +142,11 @@ impl WelcomePanel {
             let input_subscription = cx.subscribe_in(
                 &this.input_state,
                 window,
-                |this, _input, event: &gpui_component::input::InputEvent, _window, cx| {
-                    match event {
-                        gpui_component::input::InputEvent::Change => {
-                            this.on_input_change(cx);
-                        }
-                        _ => {}
+                |this, _input, event: &gpui_component::input::InputEvent, _window, cx| match event {
+                    gpui_component::input::InputEvent::Change => {
+                        this.on_input_change(cx);
                     }
+                    _ => {}
                 },
             );
             this._subscriptions.push(input_subscription);
@@ -235,11 +233,7 @@ impl WelcomePanel {
         .detach();
     }
 
-    fn new(
-        workspace_id: Option<String>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
+    fn new(workspace_id: Option<String>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let input_state = cx.new(|cx| {
             InputState::new(window, cx)
                 .code_editor("markdown")
@@ -587,8 +581,8 @@ impl WelcomePanel {
             .delegate()
             .filtered_items()
             .iter()
-            .cloned()
             .take(MAX_FILE_SUGGESTIONS)
+            .cloned()
             .collect::<Vec<_>>();
 
         self.file_suggestions = items;

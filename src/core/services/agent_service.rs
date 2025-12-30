@@ -74,7 +74,10 @@ impl AgentService {
     }
 
     /// Get the initialize response for a specific agent
-    pub async fn get_agent_init_response(&self, agent_name: &str) -> Option<acp::InitializeResponse> {
+    pub async fn get_agent_init_response(
+        &self,
+        agent_name: &str,
+    ) -> Option<acp::InitializeResponse> {
         self.agent_manager.get_agent_init_response(agent_name).await
     }
 

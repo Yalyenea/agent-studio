@@ -1,7 +1,7 @@
 use agent_client_protocol::ToolCall;
 use gpui::{prelude::FluentBuilder, *};
 use gpui_component::{
-    ActiveTheme, IconName, Sizable, WindowExt,
+    ActiveTheme, IconName, WindowExt,
     button::{Button, ButtonVariants},
     dock::{Panel, PanelControl, PanelEvent, PanelInfo, PanelState, TitleStyle},
     group_box::{GroupBox, GroupBoxVariants as _},

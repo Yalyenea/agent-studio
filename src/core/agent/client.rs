@@ -88,7 +88,9 @@ impl AgentManager {
     /// Get the initialize response for a specific agent
     pub async fn get_agent_init_response(&self, name: &str) -> Option<acp::InitializeResponse> {
         let agents = self.agents.read().await;
-        agents.get(name).and_then(|handle| handle.get_init_response())
+        agents
+            .get(name)
+            .and_then(|handle| handle.get_init_response())
     }
 
     /// Get all agents with their initialize responses
@@ -226,7 +228,11 @@ impl AgentHandle {
             .await
             .map_err(|_| anyhow!("agent {start_name} failed to start"))??;
 
-        Ok(Self { name, sender, init_response })
+        Ok(Self {
+            name,
+            sender,
+            init_response,
+        })
     }
 
     pub async fn new_session(
@@ -430,7 +436,11 @@ async fn agent_event_loop(
     init_request.client_info = Some(client_info);
     init_request.meta = None;
     let init_result = conn.initialize(init_request).await;
-    log::info!("Agent {} initialized  === >>> {:?}", agent_name, init_result);
+    log::info!(
+        "Agent {} initialized  === >>> {:?}",
+        agent_name,
+        init_result
+    );
     match init_result {
         Ok(res) => {
             // Save the initialize response

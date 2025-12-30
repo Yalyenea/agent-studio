@@ -1,5 +1,5 @@
-use agentx::Config;
 use agent_client_protocol::McpServer;
+use agentx::Config;
 use std::fs;
 
 fn main() {
@@ -14,8 +14,15 @@ fn main() {
                     println!("  Found {} MCP servers:", config.mcp_servers.len());
 
                     for (name, server_config) in &config.mcp_servers {
-                        println!("    - {} ({})", name,
-                            if server_config.enabled { "enabled" } else { "disabled" });
+                        println!(
+                            "    - {} ({})",
+                            name,
+                            if server_config.enabled {
+                                "enabled"
+                            } else {
+                                "disabled"
+                            }
+                        );
                         println!("      Description: {}", server_config.description);
 
                         // Show config details
