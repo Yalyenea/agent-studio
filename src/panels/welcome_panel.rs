@@ -176,6 +176,16 @@ impl WelcomePanel {
                 },
             );
             this._subscriptions.push(session_select_sub);
+
+            // Subscribe to mode_select changes to send SetSessionMode command to agent
+            let mode_select_sub = cx.subscribe_in(
+                &this.mode_select,
+                window,
+                |this, _, _: &SelectEvent<Vec<&'static str>>, _window, cx| {
+                    this.on_mode_changed(cx);
+                },
+            );
+            this._subscriptions.push(mode_select_sub);
         });
 
         // Load workspace info immediately and refresh on each panel creation
@@ -253,7 +263,7 @@ impl WelcomePanel {
 
         let mode_select = cx.new(|cx| {
             SelectState::new(
-                vec!["Auto", "Ask", "Plan", "Code", "Explain"],
+                vec!["default", "acceptedits", "plan", "dontAsk", "bypassPermissions"],
                 Some(IndexPath::default()), // Select "Auto" by default
                 window,
                 cx,
@@ -487,6 +497,90 @@ impl WelcomePanel {
                 agent_name
             );
         }
+    }
+
+    /// Handle mode selection change - send SetSessionMode command to agent
+    fn on_mode_changed(&mut self, cx: &mut Context<Self>) {
+        // Get the selected mode
+        let mode = match self.mode_select.read(cx).selected_value() {
+            Some(m) => m.to_lowercase(),
+            None => return,
+        };
+
+        // Get the current session ID
+        let session_id = match &self.current_session_id {
+            Some(id) => id.clone(),
+            None => {
+                log::debug!("[WelcomePanel] Cannot change mode: no session selected");
+                return;
+            }
+        };
+
+        // Get the agent name
+        let agent_name = match self.agent_select.read(cx).selected_value().cloned() {
+            Some(name) if name != "No agents" => name,
+            _ => {
+                log::debug!("[WelcomePanel] Cannot change mode: no agent selected");
+                return;
+            }
+        };
+
+        // Get the agent service to access agent manager
+        let app_state = AppState::global(cx);
+        let agent_manager = match app_state.agent_manager() {
+            Some(manager) => manager.clone(),
+            None => {
+                log::error!("[WelcomePanel] Cannot change mode: agent manager not available");
+                return;
+            }
+        };
+
+        log::info!(
+            "[WelcomePanel] Mode changed to: {} for session: {}",
+            mode,
+            session_id
+        );
+
+        // Send SetSessionMode command to agent asynchronously
+        cx.spawn(async move |_entity, _cx| {
+            // Get the agent handle
+            let agent_handle = match agent_manager.get(&agent_name).await {
+                Some(handle) => handle,
+                None => {
+                    log::error!("[WelcomePanel] Cannot change mode: agent '{}' not found", agent_name);
+                    return;
+                }
+            };
+
+            // Create the SetSessionModeRequest
+            use agent_client_protocol as acp;
+            let mut request = acp::SetSessionModeRequest::new(
+                acp::SessionId::from(session_id.clone()),
+                mode.clone(),
+            );
+            request.meta = None;
+
+            // Send the request to the agent
+            match agent_handle.set_session_mode(request).await {
+                Ok(response) => {
+                    log::info!(
+                        "[WelcomePanel] Successfully set session mode to '{}' for session '{}': {:?}",
+                        mode,
+                        session_id,
+                        response
+                    );
+                }
+                Err(e) => {
+                    log::error!(
+                        "[WelcomePanel] Failed to set session mode to '{}' for session '{}': {}",
+                        mode,
+                        session_id,
+                        e
+                    );
+                }
+            }
+        })
+        .detach();
     }
 
     /// Handle input change - detect @ symbol to open file picker and / for commands

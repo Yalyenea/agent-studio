@@ -283,6 +283,25 @@ impl AgentHandle {
             .map_err(|_| anyhow!("agent {} cancel channel closed", self.name))?
     }
 
+    /// Set the session mode
+    pub async fn set_session_mode(
+        &self,
+        request: acp::SetSessionModeRequest,
+    ) -> Result<acp::SetSessionModeResponse> {
+        let (tx, rx) = oneshot::channel();
+        self.sender
+            .send(AgentCommand::SetSessionMode {
+                request,
+                respond: tx,
+            })
+            .await
+            .map_err(|_| anyhow!("agent {} is not running", self.name))?;
+        let result = rx
+            .await
+            .map_err(|_| anyhow!("agent {} stopped", self.name))?;
+        result
+    }
+
     /// Shutdown the agent gracefully
     pub async fn shutdown(&self) -> Result<()> {
         let (tx, rx) = oneshot::channel();
