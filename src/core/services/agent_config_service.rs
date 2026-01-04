@@ -636,6 +636,30 @@ impl AgentConfigService {
         Ok(())
     }
 
+    /// Update system prompts configuration
+    pub async fn update_system_prompts(
+        &self,
+        system_prompts: std::collections::HashMap<String, String>,
+    ) -> Result<()> {
+        // Update config
+        {
+            let mut current_config = self.config.write().await;
+            current_config.system_prompts = system_prompts.clone();
+        }
+
+        // Save to file
+        self.save_to_file().await?;
+
+        // Publish config reload event
+        let config = self.config.read().await;
+        self.event_bus.publish(AgentConfigEvent::ConfigReloaded {
+            config: config.clone(),
+        });
+
+        log::info!("Successfully updated system prompts");
+        Ok(())
+    }
+
     // ========== Persistence ==========
 
     /// Save configuration to file

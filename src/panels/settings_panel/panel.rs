@@ -34,6 +34,11 @@ pub struct SettingsPanel {
     // JSON editor state for MCP servers
     pub(super) mcp_json_editor: Entity<InputState>,
     pub(super) mcp_json_error: Option<String>,
+    // System prompts input states
+    pub(super) doc_comment_input: Entity<InputState>,
+    pub(super) inline_comment_input: Entity<InputState>,
+    pub(super) explain_input: Entity<InputState>,
+    pub(super) improve_input: Entity<InputState>,
 }
 
 impl crate::panels::dock_panel::DockPanel for SettingsPanel {
@@ -75,6 +80,12 @@ impl SettingsPanel {
                 .placeholder("Paste MCP server JSON configuration here...")
         });
 
+        // System prompts input states
+        let doc_comment_input = cx.new(|cx| InputState::new(window, cx));
+        let inline_comment_input = cx.new(|cx| InputState::new(window, cx));
+        let explain_input = cx.new(|cx| InputState::new(window, cx));
+        let improve_input = cx.new(|cx| InputState::new(window, cx));
+
         let panel = Self {
             focus_handle: cx.focus_handle(),
             group_variant: GroupBoxVariant::Outline,
@@ -88,6 +99,10 @@ impl SettingsPanel {
             cached_upload_dir: PathBuf::from("."),
             mcp_json_editor,
             mcp_json_error: None,
+            doc_comment_input,
+            inline_comment_input,
+            explain_input,
+            improve_input,
         };
 
         // Load all configuration from service asynchronously
@@ -101,7 +116,7 @@ impl SettingsPanel {
                 let commands = service.list_commands().await;
                 let upload_dir = service.get_upload_dir().await;
 
-                _ = window.update(|_window, cx| {
+                _ = window.update(|window, cx| {
                     if let Some(entity) = weak_entity.upgrade() {
                         entity.update(cx, |this, cx| {
                             this.cached_agents = agents.into_iter().collect();
@@ -109,6 +124,8 @@ impl SettingsPanel {
                             this.cached_mcp_servers = mcp_servers.into_iter().collect();
                             this.cached_commands = commands.into_iter().collect();
                             this.cached_upload_dir = upload_dir;
+                            // Load system prompts into input fields
+                            this.load_system_prompts(window, cx);
                             cx.notify();
                         });
                     }
@@ -214,7 +231,7 @@ impl SettingsPanel {
         cx.notify();
     }
 
-    fn setting_pages(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Vec<SettingPage> {
+    fn setting_pages(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> Vec<SettingPage> {
         let view = cx.entity();
         let resettable = AppSettings::global(cx).resettable;
 
@@ -223,6 +240,7 @@ impl SettingsPanel {
             self.update_page(&view, resettable),
             self.agent_page(&view),
             self.model_page(&view),
+            self.prompt_page(&view),
             self.mcp_page(&view),
             self.command_page(&view),
             super::about_page::about_page(resettable),

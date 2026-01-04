@@ -1,4 +1,4 @@
-use gpui::{AppContext as _, Context, Entity, ParentElement as _, Styled, Window, px};
+use gpui::{AppContext as _, Context, Entity, ParentElement as _, Styled, Window, px, prelude::FluentBuilder};
 use gpui_component::{
     ActiveTheme, IconName, Sizable, WindowExt as _,
     button::Button,
@@ -16,6 +16,66 @@ use crate::AppState;
 impl SettingsPanel {
     pub fn model_page(&self, view: &Entity<Self>) -> SettingPage {
         SettingPage::new("Models").resettable(false).groups(vec![
+            // Default AI Model Selection
+            SettingGroup::new()
+                .title("Default AI Model")
+                .description("Select the default model for AI code assistance features")
+                .item(SettingItem::render({
+                    let view = view.clone();
+                    move |_options, _window, cx| {
+                        let model_configs = view.read(cx).cached_models.clone();
+                        let ai_service = AppState::global(cx).ai_service();
+
+                        let default_model = if let Some(service) = ai_service {
+                            service.config.read().unwrap().default_model.clone()
+                        } else {
+                            None
+                        };
+
+                        if model_configs.is_empty() {
+                            return v_flex()
+                                .w_full()
+                                .child(
+                                    Label::new("No models configured. Add a model below to enable AI features.")
+                                        .text_sm()
+                                        .text_color(cx.theme().muted_foreground)
+                                );
+                        }
+
+                        let mut options_flex = h_flex().w_full().gap_2().flex_wrap();
+
+                        let mut idx: usize = 0;
+                        for (name, config) in model_configs.iter() {
+                            if !config.enabled {
+                                continue;
+                            }
+
+                            let is_default = default_model.as_ref() == Some(name);
+                            let name_clone = name.clone();
+
+                            options_flex = options_flex.child(
+                                Button::new(("default-model-btn", idx))
+                                    .label(name.clone())
+                                    .when(is_default, |btn| btn.icon(IconName::Check))
+                                    .when(!is_default, |btn| btn.outline())
+                                    .small()
+                                    .on_click({
+                                        let view = view.clone();
+                                        move |_, _window, cx| {
+                                            view.update(cx, |this, cx| {
+                                                this.set_default_model(name_clone.clone(), cx);
+                                            });
+                                        }
+                                    })
+                            );
+
+                            idx += 1;
+                        }
+
+                        v_flex().w_full().gap_2().child(options_flex)
+                    }
+                })),
+            // Model Providers List
             SettingGroup::new()
                 .title("Model Providers")
                 .item(SettingItem::render({
@@ -209,7 +269,6 @@ impl SettingsPanel {
                                 base_url: url,
                                 api_key: key,
                                 model_name: model,
-                                system_prompts: std::collections::HashMap::new(),
                             };
                             let name_clone = name.clone();
                             let entity = entity.clone();
@@ -309,6 +368,7 @@ impl SettingsPanel {
             state.set_value(config.model_name.clone(), window, cx);
             state
         });
+
         let enabled = config.enabled;
 
         window.open_dialog(cx, move |dialog, _window, _cx| {
@@ -351,7 +411,6 @@ impl SettingsPanel {
                                 base_url: url.to_string(),
                                 api_key: key.to_string(),
                                 model_name: model.to_string(),
-                                system_prompts: std::collections::HashMap::new(),
                             };
 
                             cx.spawn(async move |cx| {
@@ -444,5 +503,18 @@ impl SettingsPanel {
                     ),
                 )
         });
+    }
+
+    pub fn set_default_model(&mut self, model_name: String, cx: &mut Context<Self>) {
+        log::info!("Setting default AI model to: {}", model_name);
+
+        // Update AI service default model
+        if let Some(ai_service) = AppState::global(cx).ai_service() {
+            let mut config = ai_service.config.write().unwrap();
+            config.default_model = Some(model_name.clone());
+            log::info!("Updated default model in AI service");
+        }
+
+        cx.notify();
     }
 }

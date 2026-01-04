@@ -23,7 +23,7 @@ pub struct AiService {
     /// Tokio runtime handle for async operations
     runtime_handle: tokio::runtime::Handle,
     /// Service configuration
-    config: Arc<RwLock<AiServiceConfig>>,
+    pub config: Arc<RwLock<AiServiceConfig>>,
 }
 
 /// Configuration for AI service
@@ -33,6 +33,9 @@ pub struct AiServiceConfig {
     pub models: HashMap<String, ModelConfig>,
     /// Default model to use (first enabled model)
     pub default_model: Option<String>,
+    /// Global system prompts for AI features
+    /// Keys: "doc_comment", "inline_comment", "explain", "improve"
+    pub system_prompts: HashMap<String, String>,
 }
 
 /// Style of code comment to generate
@@ -78,8 +81,8 @@ struct ChatMessageResponse {
 }
 
 impl AiService {
-    /// Create a new AI service with the given model configurations
-    pub fn new(models: HashMap<String, ModelConfig>) -> Self {
+    /// Create a new AI service with the given model configurations and system prompts
+    pub fn new(models: HashMap<String, ModelConfig>, system_prompts: HashMap<String, String>) -> Self {
         // Get or create Tokio runtime
         let runtime_handle = tokio::runtime::Handle::try_current().unwrap_or_else(|_| {
             log::debug!("No Tokio runtime found, creating one for AI service...");
@@ -114,6 +117,7 @@ impl AiService {
         let config = AiServiceConfig {
             models,
             default_model,
+            system_prompts,
         };
 
         Self {
@@ -124,7 +128,7 @@ impl AiService {
     }
 
     /// Update service configuration (for hot-reload support)
-    pub fn update_config(&self, models: HashMap<String, ModelConfig>) {
+    pub fn update_config(&self, models: HashMap<String, ModelConfig>, system_prompts: HashMap<String, String>) {
         let default_model = models
             .iter()
             .find(|(_, config)| config.enabled)
@@ -133,6 +137,7 @@ impl AiService {
         let mut config = self.config.write().unwrap();
         config.models = models;
         config.default_model = default_model;
+        config.system_prompts = system_prompts;
 
         log::info!("AI Service configuration updated");
     }
@@ -141,13 +146,9 @@ impl AiService {
     fn get_system_prompt(&self, prompt_key: &str, default_prompt: &str) -> String {
         let config = self.config.read().unwrap();
 
-        if let Some(model_name) = &config.default_model {
-            if let Some(model_config) = config.models.get(model_name) {
-                if let Some(custom_prompt) = model_config.system_prompts.get(prompt_key) {
-                    log::debug!("Using custom system prompt for '{}'", prompt_key);
-                    return custom_prompt.clone();
-                }
-            }
+        if let Some(custom_prompt) = config.system_prompts.get(prompt_key) {
+            log::debug!("Using custom system prompt for '{}'", prompt_key);
+            return custom_prompt.clone();
         }
 
         log::debug!("Using default system prompt for '{}'", prompt_key);

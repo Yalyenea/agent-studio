@@ -118,6 +118,10 @@ pub struct Config {
     pub mcp_servers: HashMap<String, McpServerConfig>,
     #[serde(default)]
     pub commands: HashMap<String, CommandConfig>,
+    /// Global system prompts for AI features
+    /// Keys: "doc_comment", "inline_comment", "explain", "improve"
+    #[serde(default)]
+    pub system_prompts: HashMap<String, String>,
 }
 
 fn default_upload_dir() -> PathBuf {
@@ -141,10 +145,6 @@ pub struct ModelConfig {
     pub base_url: String,
     pub api_key: String,
     pub model_name: String,
-    /// Custom system prompts for different AI features
-    /// Keys: "doc_comment", "inline_comment", "explain", "improve"
-    #[serde(default)]
-    pub system_prompts: std::collections::HashMap<String, String>,
 }
 
 /// MCP (Model Context Protocol) server configuration

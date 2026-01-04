@@ -146,7 +146,10 @@ impl AppState {
                 "Initializing AI Service with {} models",
                 initial_config.models.len()
             );
-            Some(Arc::new(AiService::new(initial_config.models.clone())))
+            Some(Arc::new(AiService::new(
+                initial_config.models.clone(),
+                initial_config.system_prompts.clone(),
+            )))
         } else {
             log::warn!("No AI models configured in config.json");
             None
