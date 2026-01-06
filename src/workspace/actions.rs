@@ -839,7 +839,7 @@ impl DockWorkspace {
                 session_id
             );
 
-            // Get AgentService to find which agent owns this session
+            // Get AgentService to cancel the session
             let agent_service = cx
                 .update(|cx| AppState::global(cx).agent_service().cloned())
                 .ok()
@@ -848,36 +848,20 @@ impl DockWorkspace {
             if let Some(agent_service) = agent_service {
                 log::info!("DockWorkspace: Got AgentService");
 
-                // List all sessions to find the agent name
-                let sessions = agent_service.list_sessions();
-                log::info!("DockWorkspace: Found {} total sessions", sessions.len());
-
-                if let Some(session_info) = sessions.iter().find(|s| s.session_id == session_id) {
-                    let agent_name = session_info.agent_name.clone();
-                    log::info!(
-                        "DockWorkspace: Found session {} belongs to agent: {}",
-                        session_id,
-                        agent_name
-                    );
-
-                    // Cancel the session
-                    match agent_service.cancel_session(&agent_name, &session_id).await {
-                        Ok(()) => {
-                            log::info!(
-                                "DockWorkspace: Session {} cancelled successfully",
-                                session_id
-                            );
-                        }
-                        Err(e) => {
-                            log::error!(
-                                "DockWorkspace: Failed to cancel session {}: {}",
-                                session_id,
-                                e
-                            );
-                        }
+                match agent_service.cancel_session_by_id(&session_id).await {
+                    Ok(()) => {
+                        log::info!(
+                            "DockWorkspace: Session {} cancelled successfully",
+                            session_id
+                        );
                     }
-                } else {
-                    log::error!("DockWorkspace: Session {} not found in list", session_id);
+                    Err(e) => {
+                        log::error!(
+                            "DockWorkspace: Failed to cancel session {}: {}",
+                            session_id,
+                            e
+                        );
+                    }
                 }
             } else {
                 log::error!("DockWorkspace: AgentService not available");

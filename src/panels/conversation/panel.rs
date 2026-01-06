@@ -10,7 +10,7 @@ use chrono::{DateTime, Utc};
 use std::time::Duration;
 
 use crate::{
-    AgentMessage, AgentTodoList, AppState, CancelSession, ChatInputBox, DiffSummary,
+    AgentMessage, AgentTodoList, AppState, ChatInputBox, DiffSummary,
     DiffSummaryData, SendMessageToSession, app::actions::AddCodeSelection,
     core::services::SessionStatus, panels::dock_panel::DockPanel,
 };
@@ -912,30 +912,47 @@ impl ConversationPanel {
         window.dispatch_action(Box::new(action), cx);
     }
 
-    /// Send a message to the current session
-    /// Dispatches SendMessageToSession action to workspace for handling
-    fn send_cancel_message(&self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Cancel the current session
+    /// Dispatches cancel via AgentService to avoid lost actions
+    fn send_cancel_message(&self, _window: &mut Window, cx: &mut Context<Self>) {
         // Only send if we have a session_id
         let Some(ref session_id) = self.session_id else {
             log::warn!("Cannot cancel session: no session_id");
             return;
         };
 
-        log::info!(
-            "[ConversationPanel] BEFORE dispatch_action: CancelSession for session: {}",
-            session_id
-        );
-
-        let action = CancelSession {
-            session_id: session_id.clone(),
+        let session_id = session_id.clone();
+        let agent_service = match AppState::global(cx).agent_service() {
+            Some(service) => service.clone(),
+            None => {
+                log::error!("AgentService not initialized, cannot cancel session");
+                return;
+            }
         };
 
-        window.dispatch_action(Box::new(action), cx);
-
         log::info!(
-            "[ConversationPanel] AFTER dispatch_action: CancelSession for session: {}",
+            "[ConversationPanel] Sending cancel request for session: {}",
             session_id
         );
+
+        cx.spawn(async move |_this, cx| {
+            match agent_service.cancel_session_by_id(&session_id).await {
+                Ok(()) => {
+                    log::info!(
+                        "[ConversationPanel] Session {} cancelled successfully",
+                        session_id
+                    );
+                }
+                Err(e) => {
+                    log::error!(
+                        "[ConversationPanel] Failed to cancel session {}: {}",
+                        session_id,
+                        e
+                    );
+                }
+            }
+        })
+        .detach();
     }
 
     /// Render the status bar at the bottom of the conversation panel

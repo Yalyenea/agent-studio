@@ -236,6 +236,15 @@ impl AgentService {
         Ok(())
     }
 
+    /// Cancel a session by ID without requiring the caller to know the agent name
+    pub async fn cancel_session_by_id(&self, session_id: &str) -> Result<()> {
+        let agent_name = self
+            .get_agent_for_session(session_id)
+            .ok_or_else(|| anyhow!("Session not found: {}", session_id))?;
+
+        self.cancel_session(&agent_name, session_id).await
+    }
+
     /// List all sessions
     pub fn list_sessions(&self) -> Vec<AgentSessionInfo> {
         self.sessions

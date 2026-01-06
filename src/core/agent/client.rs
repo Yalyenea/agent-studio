@@ -5,6 +5,7 @@
 
 use std::{
     collections::HashMap,
+    rc::Rc,
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
@@ -457,6 +458,7 @@ async fn agent_event_loop(
     let (conn, io_task) = acp::ClientSideConnection::new(client, outgoing, incoming, |fut| {
         tokio::task::spawn_local(fut);
     });
+    let conn = Rc::new(conn);
 
     let io_handle = tokio::task::spawn_local(async move {
         if let Err(err) = io_task.await {
@@ -504,9 +506,13 @@ async fn agent_event_loop(
                 let _ = respond.send(result);
             }
             AgentCommand::Prompt { request, respond } => {
-                log::info!("Agent {} received prompt command", agent_name);
-                let result = conn.prompt(request).await.map_err(|err| anyhow!(err));
-                let _ = respond.send(result);
+                let conn = conn.clone();
+                let agent_name = agent_name.clone();
+                tokio::task::spawn_local(async move {
+                    log::info!("Agent {} received prompt command", agent_name);
+                    let result = conn.prompt(request).await.map_err(|err| anyhow!(err));
+                    let _ = respond.send(result);
+                });
             }
             AgentCommand::Cancel { request, respond } => {
                 log::info!("Agent {} received cancel command", agent_name);
