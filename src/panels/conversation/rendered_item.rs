@@ -2,7 +2,8 @@ use agent_client_protocol::{ContentChunk, Plan};
 /// RenderedItem enum and message handling logic
 use gpui::{App, Entity};
 
-use super::components::{AgentThoughtItemState, ToolCallItemState, UserMessageView};
+use super::components::{AgentThoughtItemState, UserMessageView};
+use crate::components::ToolCallItem;
 use crate::{AgentMessageData, DiffSummary, PermissionRequestView};
 
 // ============================================================================
@@ -16,7 +17,7 @@ pub enum RenderedItem {
     /// Agent thought with unique ID and entity (supports chunk merging and expand/collapse)
     AgentThought(Entity<AgentThoughtItemState>),
     Plan(Plan),
-    ToolCall(Entity<ToolCallItemState>),
+    ToolCall(Entity<ToolCallItem>),
     // Simple text updates for commands and mode changes
     InfoUpdate(String),
     // Permission request

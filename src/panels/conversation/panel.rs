@@ -14,10 +14,11 @@ use crate::{
     DiffSummaryData, SendMessageToSession, app::actions::AddCodeSelection,
     core::services::SessionStatus, panels::dock_panel::DockPanel,
 };
+use crate::components::ToolCallItem;
 
 // Import from submodules
 use super::{
-    components::{AgentThoughtItemState, ResourceItemState, ToolCallItemState, UserMessageView},
+    components::{AgentThoughtItemState, ResourceItemState, UserMessageView},
     helpers::{extract_text_from_content, get_element_id, session_update_type_name},
     rendered_item::{RenderedItem, create_agent_message_data},
     types::ResourceInfo,
@@ -536,8 +537,7 @@ impl ConversationPanel {
 
         for item in &self.rendered_items {
             if let RenderedItem::ToolCall(entity) = item {
-                // Read the ToolCallItemState and extract the ToolCall
-                let tool_call = entity.read(cx).tool_call.clone();
+                let tool_call = entity.read(cx).tool_call().clone();
                 tool_calls.push(tool_call);
             }
         }
@@ -656,16 +656,10 @@ impl ConversationPanel {
                                 log::debug!(
                                     "  └─ Updating existing ToolCall: {} (title: {:?} -> {:?})",
                                     tool_call.tool_call_id,
-                                    state.tool_call.title,
+                                    state.tool_call().title,
                                     tool_call.title
                                 );
-                                // Replace the entire tool_call to get the latest data
-                                state.tool_call = tool_call.clone();
-                                // If there's content, open it
-                                if state.has_content() {
-                                    state.open = true;
-                                }
-                                cx.notify();
+                                state.update_tool_call(tool_call.clone(), cx);
                             });
                             found = true;
                             break;
@@ -681,7 +675,7 @@ impl ConversationPanel {
                     }
 
                     log::debug!("  └─ Creating new ToolCall: {}", tool_call.tool_call_id);
-                    let entity = cx.new(|_| ToolCallItemState::new(tool_call, false));
+                    let entity = cx.new(|_| ToolCallItem::new(tool_call));
                     items.push(RenderedItem::ToolCall(entity));
                 }
             }
@@ -722,7 +716,7 @@ impl ConversationPanel {
                     match ToolCall::try_from(tool_call_update) {
                         Ok(tool_call) => {
                             log::debug!("     ✓ Successfully created ToolCall from update");
-                            let entity = cx.new(|_| ToolCallItemState::new(tool_call, false));
+                            let entity = cx.new(|_| ToolCallItem::new(tool_call));
                             items.push(RenderedItem::ToolCall(entity));
                         }
                         Err(e) => {

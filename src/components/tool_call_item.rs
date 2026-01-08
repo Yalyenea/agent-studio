@@ -1,20 +1,23 @@
 use gpui::{
-    AnyElement, App, AppContext, Context, Entity, IntoElement, ParentElement, Render, RenderOnce,
-    SharedString, Styled, Window, div, prelude::FluentBuilder as _, px,
+    AnyElement, App, AppContext, Context, Entity, IntoElement, ParentElement, Render, RenderOnce, SharedString, Styled, Window, div, prelude::FluentBuilder as _, px
 };
 
-use agent_client_protocol::{self as acp, ToolCall, ToolCallContent, ToolCallStatus};
+use agent_client_protocol::{
+    self as acp, ToolCall, ToolCallContent, ToolCallId, ToolCallStatus, ToolCallUpdateFields,
+    ToolKind,
+};
 use gpui_component::{
     ActiveTheme, IconName, Sizable,
     button::{Button, ButtonVariants},
     collapsible::Collapsible,
     h_flex, v_flex,
 };
+use regex::Regex;
 use similar::{ChangeTag, TextDiff};
 
-use crate::components::{StatusIndicator, DiffView};
-use crate::core::services::SessionStatus;
+use crate::components::DiffView;
 use crate::panels::conversation::types::{ToolCallStatusExt, ToolKindExt};
+use crate::ShowToolCallDetail;
 
 /// Diff statistics
 #[derive(Debug, Clone, Default)]
@@ -63,6 +66,42 @@ fn extract_diff_stats_from_tool_call(tool_call: &ToolCall) -> Option<DiffStats> 
     None
 }
 
+/// Extract text content from XML-like tags using regex based on ToolKind
+fn extract_xml_content(text: &str, tool_kind: &ToolKind) -> String {
+    let should_extract = matches!(
+        tool_kind,
+        ToolKind::Execute | ToolKind::Other | ToolKind::Read
+    );
+
+    if !should_extract {
+        return text
+            .trim_start_matches("```")
+            .trim_end_matches("```")
+            .trim()
+            .to_string();
+    }
+
+    let re = Regex::new(r"<[^>]+>([^<]*)</[^>]+>").unwrap();
+    let mut result = String::new();
+    for cap in re.captures_iter(text) {
+        if let Some(content) = cap.get(1) {
+            if !result.is_empty() {
+                result.push('\n');
+            }
+            result.push_str(content.as_str());
+        }
+    }
+
+    if result.is_empty() {
+        text.trim_start_matches("```")
+            .trim_end_matches("```")
+            .trim()
+            .to_string()
+    } else {
+        result
+    }
+}
+
 /// Tool call item component based on ACP's ToolCall - stateful version
 pub struct ToolCallItem {
     tool_call: ToolCall,
@@ -77,6 +116,18 @@ impl ToolCallItem {
         }
     }
 
+    pub fn new_with_open(tool_call: ToolCall, open: bool) -> Self {
+        Self { tool_call, open }
+    }
+
+    pub fn tool_call(&self) -> &ToolCall {
+        &self.tool_call
+    }
+
+    pub fn tool_call_id(&self) -> &ToolCallId {
+        &self.tool_call.tool_call_id
+    }
+
     /// Toggle the open state
     pub fn toggle(&mut self, cx: &mut Context<Self>) {
         self.open = !self.open;
@@ -88,14 +139,32 @@ impl ToolCallItem {
         self.open = open;
         cx.notify();
     }
-    // pub fn update_tool_title(&mut self, tool_call: ToolCall, cx: &mut Context<Self>) {
-    //     self.tool_call.title = title;
-    //     cx.notify();
-    // }
+
     /// Update the tool call data
     pub fn update_tool_call(&mut self, tool_call: ToolCall, cx: &mut Context<Self>) {
         log::debug!("tool_call: {:?}", &tool_call);
         self.tool_call = tool_call;
+        if self.has_content() {
+            self.open = true;
+        }
+        cx.notify();
+    }
+
+    /// Update this tool call with fields from a ToolCallUpdate
+    pub fn apply_update(&mut self, update_fields: ToolCallUpdateFields, cx: &mut Context<Self>) {
+        log::debug!("Applying update to tool call: {:?}", update_fields);
+        self.tool_call.update(update_fields);
+
+        // Auto-open when tool call completes or fails (so user can see result)
+        match self.tool_call.status {
+            ToolCallStatus::Completed | ToolCallStatus::Failed => {
+                if self.has_content() {
+                    self.open = true;
+                }
+            }
+            _ => {}
+        }
+
         cx.notify();
     }
 
@@ -111,8 +180,39 @@ impl ToolCallItem {
         cx.notify();
     }
 
-    fn has_content(&self) -> bool {
+    pub fn has_content(&self) -> bool {
         !self.tool_call.content.is_empty()
+    }
+
+    /// Get formatted display title for the tool call
+    /// For Read tools, formats as: filename#L<offset>-<offset+limit>
+    /// For other tools, returns the original title
+    fn get_display_title(&self) -> String {
+        if !matches!(self.tool_call.kind, ToolKind::Read) {
+            return self.tool_call.title.clone();
+        }
+
+        if let Some(first_location) = self.tool_call.locations.first() {
+            let filename = first_location
+                .path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("file");
+
+            if let Some(raw_input) = self.tool_call.raw_input.as_ref() {
+                if let Some(raw_obj) = raw_input.as_object() {
+                    let offset = raw_obj.get("offset").and_then(|v| v.as_i64()).unwrap_or(1);
+                    let limit = raw_obj.get("limit").and_then(|v| v.as_i64()).unwrap_or(100);
+
+                    let end_line = offset + limit - 1;
+                    return format!("Read ({}#L{}-L{})", filename, offset, end_line);
+                }
+            }
+
+            return filename.to_string();
+        }
+
+        self.tool_call.title.clone()
     }
 
     /// Render content based on type
@@ -121,19 +221,20 @@ impl ToolCallItem {
             ToolCallContent::Diff(diff) => {
                 // Use DiffView component for diff content, limited to 10 lines
                 let diff_view = DiffView::new(diff.clone())
-                    .max_lines(10)
-                    .context_lines(3)
+                    .max_lines(8)
+                    .context_lines(1)
                     .show_file_header(false);  // Hide file header in compact view
 
                 diff_view.render(window, &mut **cx).into_any_element()
             }
             ToolCallContent::Content(c) => match &c.content {
                 acp::ContentBlock::Text(text) => {
+                    let cleaned_text = extract_xml_content(&text.text, &self.tool_call.kind);
                     div()
                         .text_size(px(12.))
                         .text_color(cx.theme().muted_foreground)
                         .line_height(px(18.))
-                        .child(text.text.clone())
+                        .child(cleaned_text)
                         .into_any_element()
                 }
                 _ => div()
@@ -157,17 +258,6 @@ impl ToolCallItem {
                 .into_any_element(),
         }
     }
-
-    /// Convert ToolCallStatus to SessionStatus for StatusIndicator
-    fn status_to_session_status(&self) -> SessionStatus {
-        match self.tool_call.status {
-            ToolCallStatus::Pending => SessionStatus::Pending,
-            ToolCallStatus::InProgress => SessionStatus::InProgress,
-            ToolCallStatus::Completed => SessionStatus::Completed,
-            ToolCallStatus::Failed => SessionStatus::Failed,
-            _ => SessionStatus::Idle,
-        }
-    }
 }
 
 impl Render for ToolCallItem {
@@ -181,7 +271,10 @@ impl Render for ToolCallItem {
         };
 
         let open = self.open;
-        let tool_call_id = self.tool_call.tool_call_id.clone();
+        let tool_call_id = self.tool_call.tool_call_id.to_string();
+        let title = self.get_display_title();
+        let kind_icon = self.tool_call.kind.icon();
+        let status_icon = self.tool_call.status.icon();
 
         // Extract diff stats if this is a diff tool call
         let diff_stats = extract_diff_stats_from_tool_call(&self.tool_call);
@@ -190,22 +283,24 @@ impl Render for ToolCallItem {
             .open(open)
             .w_full()
             .gap_2()
-            // Header - always visible
             .child(
                 h_flex()
-                    .items_start()
-                    .gap_2()
+                    .items_center()
+                    .gap_3()
+                    .p_2()
+                    .rounded(cx.theme().radius)
+                    .bg(cx.theme().secondary)
                     .child(
-                        // Kind icon
-                        StatusIndicator::new(self.status_to_session_status()).size(12.0),
+                        kind_icon
+                            .size(px(16.))
+                            .text_color(cx.theme().muted_foreground),
                     )
                     .child(
-                        // Title
                         div()
                             .flex_1()
                             .text_size(px(13.))
                             .text_color(cx.theme().foreground)
-                            .child(self.tool_call.title.clone()),
+                            .child(title),
                     )
                     // Show diff stats if available
                     .when_some(diff_stats, |this, stats| {
@@ -232,32 +327,48 @@ impl Render for ToolCallItem {
                         )
                     })
                     .child(
-                        // Status icon
-                        self.tool_call
-                            .status
-                            .icon()
-                            .size(px(14.))
-                            .text_color(status_color),
+                        status_icon.size(px(14.)).text_color(status_color),
                     )
                     .when(has_content, |this| {
-                        // Add expand/collapse button only if there's content
+                        let tool_call_clone_for_detail = self.tool_call.clone();
                         this.child(
-                            Button::new(SharedString::from(format!(
-                                "tool-call-{}-toggle",
-                                tool_call_id
-                            )))
-                            .icon(if open {
-                                IconName::ChevronUp
-                            } else {
-                                IconName::ChevronDown
-                            })
-                            .ghost()
-                            .xsmall()
-                            .on_click(cx.listener(
-                                |this, _ev, _window, cx| {
-                                    this.toggle(cx);
-                                },
-                            )),
+                            h_flex()
+                                .gap_2()
+                                .child(
+                                    Button::new(SharedString::from(format!(
+                                        "tool-call-{}-toggle",
+                                        tool_call_id
+                                    )))
+                                    .icon(if open {
+                                        IconName::ChevronUp
+                                    } else {
+                                        IconName::ChevronDown
+                                    })
+                                    .ghost()
+                                    .xsmall()
+                                    .on_click(cx.listener(|this, _ev, _window, cx| {
+                                        this.toggle(cx);
+                                    })),
+                                )
+                                .child(
+                                    Button::new(SharedString::from(format!(
+                                        "tool-call-{}-detail",
+                                        tool_call_id
+                                    )))
+                                    .icon(IconName::Info)
+                                    .ghost()
+                                    .xsmall()
+                                    .on_click(cx.listener(move |_, _ev, window, cx| {
+                                        let action = ShowToolCallDetail {
+                                            tool_call_id: tool_call_id.clone(),
+                                            tool_call: tool_call_clone_for_detail.clone(),
+                                        };
+                                        log::debug!(
+                                            "Dispatching ShowToolCallDetail action from ToolCallItem"
+                                        );
+                                        window.dispatch_action(Box::new(action), cx);
+                                    })),
+                                ),
                         )
                     }),
             )
@@ -275,6 +386,8 @@ impl Render for ToolCallItem {
                                 .map(|content| self.render_content(content, window, cx)),
                         ),
                 )
+                .max_h(px(300.))
+                .overflow_hidden()
             })
     }
 }
@@ -296,6 +409,14 @@ impl ToolCallItemView {
     pub fn update_tool_call(&mut self, tool_call: ToolCall, cx: &mut Context<Self>) {
         self.item.update(cx, |item, cx| {
             item.update_tool_call(tool_call, cx);
+        });
+        cx.notify();
+    }
+
+    /// Update this tool call with fields from a ToolCallUpdate
+    pub fn apply_update(&mut self, update_fields: ToolCallUpdateFields, cx: &mut Context<Self>) {
+        self.item.update(cx, |item, cx| {
+            item.apply_update(update_fields, cx);
         });
         cx.notify();
     }
