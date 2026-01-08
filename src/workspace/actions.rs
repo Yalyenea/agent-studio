@@ -57,6 +57,28 @@ impl DockWorkspace {
             }
 
             let session_id = session_id.to_string();
+
+            // Resume the session before creating the panel
+            let agent_service = AppState::global(cx).agent_service().cloned();
+            if let Some(agent_service) = agent_service {
+                let session_id_clone = session_id.clone();
+                cx.spawn(async move |_this, _cx| {
+                    if let Some(agent_name) = agent_service.get_agent_for_session(&session_id_clone) {
+                        log::info!("Resuming session {} for agent {}", session_id_clone, agent_name);
+                        match agent_service.resume_session(&agent_name, &session_id_clone).await {
+                            Ok(_) => {
+                                log::info!("Successfully resumed session {}", session_id_clone);
+                            }
+                            Err(e) => {
+                                log::warn!("Failed to resume session {}: {}", session_id_clone, e);
+                            }
+                        }
+                    } else {
+                        log::warn!("No agent found for session {}, skipping resume", session_id_clone);
+                    }
+                }).detach();
+            }
+
             self.dock_area.update(cx, |dock_area, cx| {
                 let conversation_panel =
                     DockPanelContainer::panel_for_session(session_id.clone(), window, cx);
@@ -336,7 +358,31 @@ impl DockWorkspace {
         let panel = if action.session_id.is_empty() {
             Arc::new(DockPanelContainer::panel::<ConversationPanel>(window, cx))
         } else {
-            Arc::new(Self::panel_for_session(action.session_id.clone(), window, cx))
+            // Resume the session before creating the panel
+            let session_id = action.session_id.clone();
+            let agent_service = AppState::global(cx).agent_service().cloned();
+
+            if let Some(agent_service) = agent_service {
+                let session_id_clone = session_id.clone();
+                cx.spawn(async move |_this, _cx| {
+                    // Get the agent for this session
+                    if let Some(agent_name) = agent_service.get_agent_for_session(&session_id_clone) {
+                        log::info!("Resuming session {} for agent {}", session_id_clone, agent_name);
+                        match agent_service.resume_session(&agent_name, &session_id_clone).await {
+                            Ok(_) => {
+                                log::info!("Successfully resumed session {}", session_id_clone);
+                            }
+                            Err(e) => {
+                                log::warn!("Failed to resume session {}: {}", session_id_clone, e);
+                            }
+                        }
+                    } else {
+                        log::warn!("No agent found for session {}, skipping resume", session_id_clone);
+                    }
+                }).detach();
+            }
+
+            Arc::new(Self::panel_for_session(session_id, window, cx))
         };
 
         self.dock_area.update(cx, |dock_area, cx| {
