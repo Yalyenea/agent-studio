@@ -116,9 +116,7 @@ pub fn get_agent_icon(name: &str) -> Icon {
 
 /// Get default config.json content embedded in the binary
 pub fn get_default_config() -> Option<String> {
-    ConfigAssets::get("config.json").map(|file| {
-        String::from_utf8_lossy(&file.data).to_string()
-    })
+    ConfigAssets::get("config.json").map(|file| String::from_utf8_lossy(&file.data).to_string())
 }
 
 /// Get all embedded theme files

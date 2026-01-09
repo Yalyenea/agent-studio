@@ -2,7 +2,10 @@ use gpui::{
     App, ClipboardEntry, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement,
     Render, ScrollHandle, SharedString, Styled, Timer, Window, div, prelude::*, px,
 };
-use gpui_component::{ActiveTheme, Icon, IconName, h_flex, input::InputState, v_flex};
+
+use gpui_component::{
+    ActiveTheme, Icon, IconName, h_flex, input::InputState, spinner::Spinner, v_flex,
+};
 
 // Use the published ACP schema crate
 use agent_client_protocol::{ContentChunk, ImageContent, SessionUpdate, ToolCall};
@@ -1019,10 +1022,20 @@ impl ConversationPanel {
                                     h_flex()
                                         .items_center()
                                         .gap_1()
-                                        .child(
-                                            Icon::new(status_icon)
-                                                .size(px(12.))
-                                                .text_color(status_color),
+                                        .when_else(
+                                            status_info.status == SessionStatus::InProgress,
+                                            |this| {
+                                                this.child(Spinner::new().icon(status_icon.clone()))
+                                                    .size(px(12.))
+                                                    .text_color(status_color)
+                                            },
+                                            |this| {
+                                                this.child(
+                                                    Icon::new(status_icon.clone())
+                                                        .size(px(12.))
+                                                        .text_color(status_color),
+                                                )
+                                            },
                                         )
                                         .child(
                                             div()

@@ -1,6 +1,6 @@
 use agentx::Assets;
-use agentx::{AgentManager, Config, PermissionStore, workspace::open_new};
 use agentx::core::config_manager;
+use agentx::{AgentManager, Config, PermissionStore, workspace::open_new};
 use anyhow::Context as _;
 use gpui::Application;
 use std::sync::Arc;
@@ -17,6 +17,13 @@ fn main() {
         let session_bus = agentx::AppState::global(cx).session_bus.clone();
         let permission_bus = agentx::AppState::global(cx).permission_bus.clone();
 
+        // Open GUI window immediately (non-blocking)
+        open_new(cx, |_, _, _| {
+            // GUI window is now open
+        })
+        .detach();
+
+        // Initialize agents in the background (async, non-blocking)
         cx.spawn(async move |cx| {
             let config: Config = match std::fs::read_to_string(&config_path)
                 .with_context(|| format!("failed to read {}", config_path.display()))
@@ -38,7 +45,7 @@ fn main() {
 
             println!("Config loaded from {}", config_path.display());
 
-            // Initialize agent manager
+            // Initialize agent manager (this happens in background after GUI is shown)
             let permission_store = Arc::new(PermissionStore::default());
 
             match AgentManager::initialize(
@@ -75,14 +82,9 @@ fn main() {
                     // Initialize persistence subscription in async context
                     if let Some(message_service) = init_result {
                         message_service.init_persistence();
-                        let _ = cx.update(|cx| {
-                            open_new(cx, |_, _, _| {
-                                // Load settings and config
-                            })
-                            .detach();
-                        });
+                        println!("Agent initialization complete - all agents ready");
                     } else {
-                        eprintln!("MessageService not initialized, window will not open");
+                        eprintln!("MessageService not initialized");
                     }
                 }
                 Err(e) => {

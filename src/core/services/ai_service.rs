@@ -192,7 +192,11 @@ impl AiService {
                 model_config.base_url.trim_end_matches('/')
             );
 
-            (url, model_config.model_name.clone(), model_config.api_key.clone())
+            (
+                url,
+                model_config.model_name.clone(),
+                model_config.api_key.clone(),
+            )
         }; // Lock is released here
 
         let request = ChatCompletionRequest {
@@ -211,11 +215,7 @@ impl AiService {
             temperature: Some(0.3),
         };
 
-        log::debug!(
-            "Calling AI API: {} (model: {})",
-            url,
-            model_name
-        );
+        log::debug!("Calling AI API: {} (model: {})", url, model_name);
 
         let body = serde_json::to_string(&request).context("Failed to serialize request")?;
 

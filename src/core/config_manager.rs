@@ -8,22 +8,22 @@ use std::path::PathBuf;
 pub fn get_user_data_dir() -> Result<PathBuf> {
     #[cfg(target_os = "macos")]
     {
-        let home = dirs::home_dir()
-            .ok_or_else(|| anyhow::anyhow!("Failed to get home directory"))?;
+        let home =
+            dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Failed to get home directory"))?;
         Ok(home.join(".agentx"))
     }
 
     #[cfg(target_os = "windows")]
     {
-        let appdata = dirs::config_dir()
-            .ok_or_else(|| anyhow::anyhow!("Failed to get AppData directory"))?;
+        let appdata =
+            dirs::config_dir().ok_or_else(|| anyhow::anyhow!("Failed to get AppData directory"))?;
         Ok(appdata.join("agentx"))
     }
 
     #[cfg(target_os = "linux")]
     {
-        let config = dirs::config_dir()
-            .ok_or_else(|| anyhow::anyhow!("Failed to get config directory"))?;
+        let config =
+            dirs::config_dir().ok_or_else(|| anyhow::anyhow!("Failed to get config directory"))?;
         Ok(config.join("agentx"))
     }
 
@@ -53,7 +53,10 @@ pub fn initialize_user_config() -> Result<PathBuf> {
 
     // If config file doesn't exist, create it from embedded default
     if !config_path.exists() {
-        log::info!("Config file not found, creating from embedded default: {:?}", config_path);
+        log::info!(
+            "Config file not found, creating from embedded default: {:?}",
+            config_path
+        );
 
         let default_config = crate::assets::get_default_config()
             .ok_or_else(|| anyhow::anyhow!("Failed to get embedded default config"))?;

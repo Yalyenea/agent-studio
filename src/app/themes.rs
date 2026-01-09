@@ -52,11 +52,17 @@ pub fn init(cx: &mut App) {
         // Release mode: use user data directory, fallback to ./themes
         match crate::core::config_manager::initialize_themes_dir() {
             Ok(dir) => {
-                tracing::info!("Release mode: using themes from user data directory: {:?}", dir);
+                tracing::info!(
+                    "Release mode: using themes from user data directory: {:?}",
+                    dir
+                );
                 dir
             }
             Err(e) => {
-                tracing::warn!("Failed to initialize user themes directory: {}, falling back to ./themes", e);
+                tracing::warn!(
+                    "Failed to initialize user themes directory: {}, falling back to ./themes",
+                    e
+                );
                 PathBuf::from("./themes")
             }
         }
