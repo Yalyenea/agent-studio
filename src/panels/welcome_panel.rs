@@ -3,6 +3,7 @@ use gpui::{
     IntoElement, ParentElement, Render, SharedString, Styled, Subscription, Window, px,
 };
 use std::collections::HashSet;
+use rust_i18n::t;
 
 use gpui_component::{
     ActiveTheme, IndexPath, StyledExt,
@@ -1414,7 +1415,7 @@ impl Render for WelcomePanel {
                                 }
                             }
                             if self.is_session_loading {
-                                chat = chat.agent_status_text("正在加载中...");
+                                chat = chat.agent_status_text(t!("welcome.loading").to_string());
                             }
 
                             // log::debug!(

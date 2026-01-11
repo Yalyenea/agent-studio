@@ -12,6 +12,7 @@ use gpui_component::{
 use agent_client_protocol::{ContentChunk, ImageContent, SessionUpdate, ToolCall};
 use chrono::{DateTime, Utc};
 use std::time::Duration;
+use rust_i18n::t;
 
 use crate::components::ToolCallItem;
 use crate::{
@@ -1236,7 +1237,7 @@ impl Render for ConversationPanel {
                                     div()
                                         .text_color(cx.theme().muted_foreground)
                                         .text_sm()
-                                        .child("暂无消息"),
+                                        .child(t!("conversation.empty").to_string()),
                                 ),
                         )
                     })
