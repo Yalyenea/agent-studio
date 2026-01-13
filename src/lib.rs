@@ -20,8 +20,8 @@ mod test_mock_data;
 // Re-export from panels module
 use crate::panels::{DockPanel, DockPanelContainer, DockPanelState};
 pub use panels::{
-    AppSettings, CodeEditorPanel, ConversationPanel, SessionManagerPanel, SettingsPanel,
-    TaskPanel, TerminalPanel, ToolCallDetailPanel, WelcomePanel,
+    AppSettings, CodeEditorPanel, ConversationPanel, SessionManagerPanel, SettingsPanel, TaskPanel,
+    TerminalPanel, ToolCallDetailPanel, WelcomePanel,
 };
 
 // Re-export from core module
@@ -38,12 +38,11 @@ pub use core::{
 pub use app::app_state::{AppState, WelcomeSession};
 pub use app::{
     actions::{
-        About, AddAgent, AddPanel, AddSessionPanel, AddSessionToList, AddTerminalPanel, CancelSession, CloseWindow,
-        CreateTaskFromWelcome, Info, NewSessionConversationPanel, Open, Quit, ReloadAgentConfig,
-        RemoveAgent, RestartAgent, SelectFont, SelectLocale, SelectRadius, SelectScrollbarShow,
-        SelectedAgentTask, SendMessageToSession, SetUploadDir, ShowConversationPanel,
-        ShowPanelInfo, ShowToolCallDetail, ShowWelcomePanel, Tab, TabPrev, TestAction,
-        ToggleDockToggleButton, TogglePanelVisible, ToggleSearch, UpdateAgent,
+        About, AddAgent, AddSessionToList, CancelSession, CloseWindow, CreateTaskFromWelcome, Info,
+        NewSessionConversationPanel, Open, PanelAction, Quit, ReloadAgentConfig, RemoveAgent,
+        RestartAgent, SelectFont, SelectLocale, SelectRadius, SelectScrollbarShow,
+        SelectedAgentTask, SendMessageToSession, SetUploadDir, ShowPanelInfo, Tab, TabPrev,
+        TestAction, ToggleDockToggleButton, TogglePanelVisible, ToggleSearch, UpdateAgent,
     },
     app_menus, menu, themes, title_bar,
 };

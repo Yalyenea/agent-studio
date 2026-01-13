@@ -9,8 +9,9 @@ use gpui_component::{
 use std::{sync::Arc, time::Duration};
 
 use crate::{
-    AddPanel, AppState, AppTitleBar, CodeEditorPanel, ConversationPanel, SessionManagerPanel,
-    TaskPanel, TerminalPanel, ToggleDockToggleButton, TogglePanelVisible, panels::dock_panel::DockPanelContainer,
+    AppState, AppTitleBar, CodeEditorPanel, ConversationPanel, PanelAction, SessionManagerPanel,
+    TaskPanel, TerminalPanel, ToggleDockToggleButton, TogglePanelVisible,
+    panels::dock_panel::DockPanelContainer,
 };
 
 // Action handlers module
@@ -85,17 +86,20 @@ impl DockWorkspace {
                             move |menu, _, cx| {
                                 menu.menu(
                                     "Add Panel to Center",
-                                    Box::new(AddPanel(DockPlacement::Center)),
+                                    Box::new(PanelAction::add_conversation(DockPlacement::Center)),
                                 )
                                 .separator()
-                                .menu("Add Panel to Left", Box::new(AddPanel(DockPlacement::Left)))
+                                .menu(
+                                    "Add Panel to Left",
+                                    Box::new(PanelAction::add_conversation(DockPlacement::Left)),
+                                )
                                 .menu(
                                     "Add Panel to Right",
-                                    Box::new(AddPanel(DockPlacement::Right)),
+                                    Box::new(PanelAction::add_conversation(DockPlacement::Right)),
                                 )
                                 .menu(
                                     "Add Panel to Bottom",
-                                    Box::new(AddPanel(DockPlacement::Bottom)),
+                                    Box::new(PanelAction::add_conversation(DockPlacement::Bottom)),
                                 )
                                 .separator()
                                 .menu(
@@ -375,15 +379,10 @@ impl Render for DockWorkspace {
 
         div()
             .id("story-workspace")
-            .on_action(cx.listener(Self::on_action_add_panel))
-            .on_action(cx.listener(Self::on_action_add_session_panel))
-            .on_action(cx.listener(Self::on_action_add_terminal_panel))
+            .on_action(cx.listener(Self::on_action_panel_action))
             .on_action(cx.listener(Self::on_action_toggle_panel_visible))
             .on_action(cx.listener(Self::on_action_toggle_dock_toggle_button))
-            .on_action(cx.listener(Self::on_action_show_welcome_panel))
             .on_action(cx.listener(Self::on_action_open_setting_panel))
-            .on_action(cx.listener(Self::on_action_show_conversation_panel))
-            .on_action(cx.listener(Self::on_action_show_tool_call_detail_panel))
             .on_action(cx.listener(Self::on_action_new_session_conversation_panel))
             .on_action(cx.listener(Self::on_action_create_task_from_welcome))
             .on_action(cx.listener(Self::on_action_send_message_to_session))
