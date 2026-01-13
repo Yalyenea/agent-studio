@@ -13,6 +13,7 @@ rust_i18n::i18n!("locales", fallback = "en");
 
 pub use app::key_binding;
 pub use assets::Assets;
+pub use assets::get_default_config;
 
 #[cfg(test)]
 mod test_mock_data;
