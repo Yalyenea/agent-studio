@@ -49,6 +49,7 @@ const CHILD_INDENT: f32 = 22.0; // ChevronIcon(16px) + gap(6px)
 pub struct WorkspaceGroup {
     pub id: String,
     pub name: String,
+    pub path: std::path::PathBuf,
     pub tasks: Vec<Rc<WorkspaceTask>>,
     pub is_expanded: bool,
 }
@@ -190,6 +191,7 @@ impl TaskPanel {
                             WorkspaceGroup {
                                 id: ws.id.clone(),
                                 name: ws.name.clone(),
+                                path: ws.path.clone(),
                                 tasks,
                                 is_expanded: previously_expanded
                                     .get(&ws.id)
@@ -352,6 +354,7 @@ impl TaskPanel {
                         this.workspaces.push(WorkspaceGroup {
                             id: workspace.id.clone(),
                             name: workspace.name.clone(),
+                            path: workspace.path.clone(),
                             tasks: tasks.into_iter().map(Rc::new).collect(),
                             is_expanded: true,
                         });
@@ -844,6 +847,7 @@ impl TaskPanel {
                     Some(WorkspaceGroup {
                         id: workspace.id.clone(),
                         name: workspace.name.clone(),
+                        path: workspace.path.clone(),
                         tasks: filtered_tasks,
                         is_expanded: workspace.is_expanded,
                     })
@@ -1074,6 +1078,7 @@ impl TaskPanel {
                             })
                             .child({
                                 let workspace_id = workspace_id.clone();
+                                let workspace_path = workspace.path.clone();
                                 let entity = entity.clone();
                                 Button::new(SharedString::from(format!(
                                     "workspace-menu-{}",
@@ -1085,6 +1090,7 @@ impl TaskPanel {
                                 .dropdown_menu(
                                     move |menu, window, _| {
                                         let workspace_id = workspace_id.clone();
+                                        let workspace_path = workspace_path.clone();
                                         let entity = entity.clone();
                                         menu.item(
                                             PopupMenuItem::new(
@@ -1093,7 +1099,13 @@ impl TaskPanel {
                                             .icon(IconName::SquareTerminal)
                                             .on_click(
                                                 move |_, window, cx| {
-                                                    window.dispatch_action(Box::new(AddTerminalPanel::default()), cx);
+                                                    window.dispatch_action(
+                                                        Box::new(AddTerminalPanel {
+                                                            placement: gpui_component::dock::DockPlacement::Bottom,
+                                                            working_directory: Some(workspace_path.clone()),
+                                                        }),
+                                                        cx,
+                                                    );
                                                 },
                                             ),
                                         )

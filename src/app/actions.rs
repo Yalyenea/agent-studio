@@ -222,6 +222,9 @@ pub struct AddTerminalPanel {
     /// 面板放置位置，默认为 Bottom
     #[serde(skip, default = "default_bottom_placement")]
     pub placement: DockPlacement,
+    /// 可选的工作目录路径
+    #[serde(skip)]
+    pub working_directory: Option<std::path::PathBuf>,
 }
 
 fn default_bottom_placement() -> DockPlacement {
@@ -232,6 +235,7 @@ impl Default for AddTerminalPanel {
     fn default() -> Self {
         Self {
             placement: DockPlacement::Bottom,
+            working_directory: None,
         }
     }
 }

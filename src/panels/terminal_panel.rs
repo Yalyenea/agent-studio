@@ -27,6 +27,8 @@ pub struct TerminalPanel {
     terminal_view: Option<Entity<TerminalView>>,
     text_style: TextStyle,
     status: TerminalStatus,
+    /// 工作目录 (如果为 None,使用当前目录)
+    working_directory: Option<std::path::PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -46,7 +48,7 @@ impl DockPanel for TerminalPanel {
     }
 
     fn new_view(window: &mut Window, cx: &mut App) -> Entity<impl Render> {
-        cx.new(|cx| Self::new(window, cx))
+        cx.new(|cx| Self::new(window, cx, None))
     }
 
     fn paddings() -> Pixels {
@@ -56,10 +58,23 @@ impl DockPanel for TerminalPanel {
 
 impl TerminalPanel {
     pub fn view(window: &mut Window, cx: &mut App) -> Entity<Self> {
-        cx.new(|cx| Self::new(window, cx))
+        cx.new(|cx| Self::new(window, cx, None))
     }
 
-    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+    /// 创建带指定工作目录的终端面板视图
+    pub fn view_with_cwd(
+        working_directory: std::path::PathBuf,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Entity<Self> {
+        cx.new(|cx| Self::new(window, cx, Some(working_directory)))
+    }
+
+    pub fn new(
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        working_directory: Option<std::path::PathBuf>,
+    ) -> Self {
         // Load terminal configuration
         let terminal_config = TerminalConfig::load_or_create()
             .unwrap_or_else(|_| TerminalConfig::default());
@@ -71,6 +86,7 @@ impl TerminalPanel {
             terminal_view: None,
             text_style,
             status: TerminalStatus::Initializing,
+            working_directory,
         };
 
         // Initialize terminal asynchronously
@@ -86,9 +102,12 @@ impl TerminalPanel {
         env_vars.insert("TERM".to_string(), "xterm-256color".to_string());
         env_vars.insert("COLORTERM".to_string(), "truecolor".to_string());
 
+        // 使用指定的工作目录,如果没有则使用当前目录
+        let working_dir = self.working_directory.clone().or_else(|| env::current_dir().ok());
+
         let window_id = window.window_handle().window_id().as_u64();
         let terminal_task = TerminalBuilder::new(
-            env::current_dir().ok(),
+            working_dir,
             shell,
             env_vars,
             None,

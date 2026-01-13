@@ -412,7 +412,17 @@ impl DockWorkspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let panel = Arc::new(DockPanelContainer::panel::<crate::TerminalPanel>(window, cx));
+        let panel = if let Some(working_directory) = &action.working_directory {
+            // 使用指定的工作目录创建终端面板
+            Arc::new(DockPanelContainer::panel_for_terminal_with_cwd(
+                working_directory.clone(),
+                window,
+                cx,
+            ))
+        } else {
+            // 使用默认工作目录创建终端面板
+            Arc::new(DockPanelContainer::panel::<crate::TerminalPanel>(window, cx))
+        };
 
         self.dock_area.update(cx, |dock_area, cx| {
             dock_area.add_panel(panel, action.placement, None, window, cx);

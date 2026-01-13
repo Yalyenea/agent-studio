@@ -348,6 +348,38 @@ impl DockPanelContainer {
         view
     }
 
+    /// 创建带指定工作目录的终端面板
+    pub fn panel_for_terminal_with_cwd(
+        working_directory: std::path::PathBuf,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Entity<Self> {
+        use crate::TerminalPanel;
+
+        let name = TerminalPanel::title();
+        let title_key = TerminalPanel::title_key();
+        let description = TerminalPanel::description();
+        let story = TerminalPanel::view_with_cwd(working_directory, window, cx);
+        let story_klass = TerminalPanel::klass();
+
+        let view = cx.new(|cx| {
+            let mut container = Self::new(cx)
+                .story(story.into(), story_klass)
+                .on_active(TerminalPanel::on_active_any);
+            container.focus_handle = cx.focus_handle();
+            container.closable = TerminalPanel::closable();
+            container.zoomable = TerminalPanel::zoomable();
+            container.name = name.into();
+            container.title_key = title_key.map(SharedString::from);
+            container.description = description.into();
+            container.title_bg = TerminalPanel::title_bg();
+            container.paddings = TerminalPanel::paddings();
+            container
+        });
+
+        view
+    }
+
     pub fn width(mut self, width: gpui::Pixels) -> Self {
         self.width = Some(width);
         self
