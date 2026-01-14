@@ -738,8 +738,42 @@ impl DockWorkspace {
 
         let dock_area = self.dock_area.clone();
 
+        // Get workspace_id from action or use active workspace
+        let target_workspace_id = action.workspace_id.clone();
+
         cx.spawn_in(window, async move |_this, window| {
-            // Step 1: Get or reuse session
+            // Step 1: Get target workspace (from action) or active workspace
+            let workspace = if let Some(ws_id) = target_workspace_id {
+                log::info!("Using specified workspace: {}", ws_id);
+                match workspace_service.get_workspace(&ws_id).await {
+                    Some(ws) => ws,
+                    None => {
+                        log::error!("Specified workspace not found: {}", ws_id);
+                        return;
+                    }
+                }
+            } else {
+                log::info!("Using active workspace");
+                match workspace_service.get_active_workspace().await {
+                    Some(ws) => ws,
+                    None => {
+                        log::error!("No active workspace available");
+                        return;
+                    }
+                }
+            };
+
+            let workspace_id = workspace.id.clone();
+            let workspace_cwd = workspace.path.clone();
+
+            log::info!(
+                "Creating task in workspace: {} ({}), cwd: {:?}",
+                workspace.name,
+                workspace_id,
+                workspace_cwd
+            );
+
+            // Step 2: Get or reuse session
             // IMPORTANT: Reuse welcome_session if it exists (created by WelcomePanel)
             // This ensures we use the same agent process that's already running
             let session_id = if let Some(ws) = welcome_session {
@@ -750,7 +784,7 @@ impl DockWorkspace {
                 );
                 ws.session_id
             } else {
-                // No welcome session, create new one
+                // No welcome session, create new one with workspace cwd
                 let mcp_servers = if let Some(service) = agent_config_service {
                     service
                         .list_mcp_servers()
@@ -762,8 +796,15 @@ impl DockWorkspace {
                 } else {
                     Vec::new()
                 };
+
+                log::info!(
+                    "Creating new session for agent '{}' with cwd: {:?}",
+                    agent_name,
+                    workspace_cwd
+                );
+
                 match agent_service
-                    .create_session_with_mcp(&agent_name, mcp_servers)
+                    .create_session_with_mcp_and_cwd(&agent_name, mcp_servers, workspace_cwd)
                     .await
                 {
                     Ok(session_id) => {
@@ -781,17 +822,7 @@ impl DockWorkspace {
                 }
             };
 
-            // Step 2: Create WorkspaceTask
-            // Get active workspace
-            let workspace = match workspace_service.get_active_workspace().await {
-                Some(ws) => ws,
-                None => {
-                    log::error!("No active workspace available");
-                    return;
-                }
-            };
-
-            let workspace_id = workspace.id.clone();
+            // Step 3: Create WorkspaceTask
 
             // Create task in workspace
             let task = match workspace_service

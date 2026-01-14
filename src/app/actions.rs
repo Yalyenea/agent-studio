@@ -203,6 +203,8 @@ pub struct CreateTaskFromWelcome {
     pub mode: String,
     /// 附加的图片列表 (ImageContent, filename)
     pub images: Vec<(ImageContent, String)>,
+    /// 目标工作区 ID（可选，如果未指定则使用 active workspace）
+    pub workspace_id: Option<String>,
 }
 
 /// 发送消息到指定会话

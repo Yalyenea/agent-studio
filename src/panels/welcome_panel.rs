@@ -314,7 +314,17 @@ impl WelcomePanel {
                 if let Some(entity) = weak_entity.upgrade() {
                     entity.update(cx, |this, cx| {
                         this.has_workspace = workspace.is_some();
-                        this.active_workspace_name = workspace.map(|ws| ws.name);
+                        if let Some(ref ws) = workspace {
+                            this.active_workspace_name = Some(ws.name.clone());
+                            // Update working_directory to use workspace path
+                            this.working_directory = ws.path.clone();
+                            log::info!(
+                                "[WelcomePanel] Updated working directory to: {:?}",
+                                this.working_directory
+                            );
+                        } else {
+                            this.active_workspace_name = None;
+                        }
                         log::info!(
                             "[WelcomePanel] Updated workspace name: {:?}",
                             this.active_workspace_name
@@ -338,6 +348,7 @@ impl WelcomePanel {
         });
 
         // Get the working directory - use provided or get from AppState
+        // If workspace_id is provided, we'll update it asynchronously in load_workspace_info
         let working_dir = working_directory.unwrap_or_else(|| AppState::global(cx).current_working_dir().clone());
 
         let context_list = cx.new(|cx| {
@@ -1178,6 +1189,7 @@ impl WelcomePanel {
         let available_mcps = self.available_mcps.clone();
         let selected_mcps = self.selected_mcps.clone();
         let mcp_selection_initialized = self.mcp_selection_initialized;
+        let cwd = self.working_directory.clone();  // 使用面板的工作目录
 
         let weak_self = cx.entity().downgrade();
         let agent_name_for_session = agent_name.clone();
@@ -1196,8 +1208,14 @@ impl WelcomePanel {
                 }
             }
 
+            log::info!(
+                "[WelcomePanel] Creating session for agent '{}' with cwd: {:?}",
+                agent_name_for_session,
+                cwd
+            );
+
             match agent_service
-                .create_session_with_mcp(&agent_name_for_session, mcp_servers)
+                .create_session_with_mcp_and_cwd(&agent_name_for_session, mcp_servers, cwd)
                 .await
             {
                 Ok(session_id) => {
@@ -1291,14 +1309,21 @@ impl WelcomePanel {
                 state.set_value("", window, cx);
             });
 
-            // Dispatch CreateTaskFromWelcome action with images
+            // Dispatch CreateTaskFromWelcome action with images and workspace_id
             let images = std::mem::take(&mut self.pasted_images);
+            let workspace_id = self.workspace_id.clone();
             let action = CreateTaskFromWelcome {
                 task_input: task_name,
                 agent_name,
                 mode,
                 images,
+                workspace_id,
             };
+
+            log::info!(
+                "[WelcomePanel] Dispatching CreateTaskFromWelcome with workspace_id: {:?}",
+                action.workspace_id
+            );
 
             window.dispatch_action(Box::new(action), cx);
 
