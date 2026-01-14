@@ -23,6 +23,11 @@ pub enum PanelKind {
         #[serde(skip)]
         working_directory: Option<PathBuf>,
     },
+    /// 代码编辑器面板，可选工作目录
+    CodeEditor {
+        #[serde(skip)]
+        working_directory: Option<PathBuf>,
+    },
     /// 欢迎面板，可选 workspace_id
     Welcome { workspace_id: Option<String> },
     /// 工具调用详情面板
@@ -68,6 +73,13 @@ impl PanelAction {
     pub fn add_terminal(placement: DockPlacement, working_directory: Option<PathBuf>) -> Self {
         Self(PanelCommand::Add {
             panel: PanelKind::Terminal { working_directory },
+            placement,
+        })
+    }
+
+    pub fn add_code_editor(placement: DockPlacement, working_directory: Option<PathBuf>) -> Self {
+        Self(PanelCommand::Add {
+            panel: PanelKind::CodeEditor { working_directory },
             placement,
         })
     }

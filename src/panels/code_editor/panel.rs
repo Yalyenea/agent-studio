@@ -56,10 +56,18 @@ impl crate::panels::dock_panel::DockPanel for CodeEditorPanel {
 
 impl CodeEditorPanel {
     pub fn view(window: &mut Window, cx: &mut App) -> Entity<Self> {
-        cx.new(|cx| Self::new(window, cx))
+        cx.new(|cx| Self::new(window, None, cx))
     }
 
-    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn view_with_working_dir(
+        window: &mut Window,
+        working_dir: Option<PathBuf>,
+        cx: &mut App,
+    ) -> Entity<Self> {
+        cx.new(|cx| Self::new(window, working_dir, cx))
+    }
+
+    pub fn new(window: &mut Window, working_dir: Option<PathBuf>, cx: &mut Context<Self>) -> Self {
         let default_language = Language::from_str("rust");
         let lsp_store = CodeEditorPanelLspStore::new();
 
@@ -87,7 +95,7 @@ impl CodeEditorPanel {
         let go_to_line_state = cx.new(|cx| InputState::new(window, cx));
 
         let tree_state = cx.new(|cx| TreeState::new(cx));
-        let working_dir = AppState::global(cx).current_working_dir().clone();
+        let working_dir = working_dir.unwrap_or_else(|| AppState::global(cx).current_working_dir().clone());
         Self::load_files(tree_state.clone(), working_dir, cx);
 
         let _subscriptions = vec![cx.subscribe(&editor, |this, _, _: &InputEvent, cx| {

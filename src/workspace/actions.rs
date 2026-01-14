@@ -344,6 +344,9 @@ impl DockWorkspace {
                 PanelKind::Terminal { working_directory } => {
                     self.add_terminal_panel_to(working_directory.clone(), *placement, window, cx);
                 }
+                PanelKind::CodeEditor { working_directory } => {
+                    self.add_code_editor_panel_to(working_directory.clone(), *placement, window, cx);
+                }
                 PanelKind::Welcome { workspace_id } => {
                     self.show_welcome_panel(workspace_id.clone(), window, cx);
                 }
@@ -362,6 +365,14 @@ impl DockWorkspace {
                     self.add_terminal_panel_to(
                         working_directory.clone(),
                         DockPlacement::Bottom,
+                        window,
+                        cx,
+                    );
+                }
+                PanelKind::CodeEditor { working_directory } => {
+                    self.add_code_editor_panel_to(
+                        working_directory.clone(),
+                        DockPlacement::Right,
                         window,
                         cx,
                     );
@@ -396,14 +407,34 @@ impl DockWorkspace {
 
             let panel = Arc::new(Self::panel_for_session(session_id, window, cx));
             self.dock_area.update(cx, |dock_area, cx| {
+                // Check if dock is open BEFORE adding panel
+                let was_dock_open = dock_area.is_dock_open(placement, cx);
+
+                // Add panel to dock
                 dock_area.add_panel(panel, placement, None, window, cx);
+
+                // If dock was closed, toggle it to open it
+                if !was_dock_open {
+                    dock_area.toggle_dock(placement, window, cx);
+                    log::debug!("Auto-expanded {:?} dock for conversation panel", placement);
+                }
             });
             return;
         }
 
         let panel = Arc::new(DockPanelContainer::panel::<ConversationPanel>(window, cx));
         self.dock_area.update(cx, |dock_area, cx| {
+            // Check if dock is open BEFORE adding panel
+            let was_dock_open = dock_area.is_dock_open(placement, cx);
+
+            // Add panel to dock
             dock_area.add_panel(panel, placement, None, window, cx);
+
+            // If dock was closed, toggle it to open it
+            if !was_dock_open {
+                dock_area.toggle_dock(placement, window, cx);
+                log::debug!("Auto-expanded {:?} dock for conversation panel", placement);
+            }
         });
     }
 
@@ -429,7 +460,53 @@ impl DockWorkspace {
         };
 
         self.dock_area.update(cx, |dock_area, cx| {
+            // Check if dock is open BEFORE adding panel
+            let was_dock_open = dock_area.is_dock_open(placement, cx);
+
+            // Add panel to dock
             dock_area.add_panel(panel, placement, None, window, cx);
+
+            // If dock was closed, toggle it to open it
+            if !was_dock_open {
+                dock_area.toggle_dock(placement, window, cx);
+                log::debug!("Auto-expanded {:?} dock for terminal panel", placement);
+            }
+        });
+    }
+
+    fn add_code_editor_panel_to(
+        &mut self,
+        working_directory: Option<std::path::PathBuf>,
+        placement: DockPlacement,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let panel = if let Some(working_directory) = working_directory {
+            // 使用指定的工作目录创建代码编辑器面板
+            Arc::new(DockPanelContainer::panel_for_code_editor_with_cwd(
+                working_directory,
+                window,
+                cx,
+            ))
+        } else {
+            // 使用默认工作目录创建代码编辑器面板
+            Arc::new(DockPanelContainer::panel::<crate::CodeEditorPanel>(
+                window, cx,
+            ))
+        };
+
+        self.dock_area.update(cx, |dock_area, cx| {
+            // Check if dock is open BEFORE adding panel
+            let was_dock_open = dock_area.is_dock_open(placement, cx);
+
+            // Add panel to dock
+            dock_area.add_panel(panel, placement, None, window, cx);
+
+            // If dock was closed, toggle it to open it
+            if !was_dock_open {
+                dock_area.toggle_dock(placement, window, cx);
+                log::debug!("Auto-expanded {:?} dock for code editor panel", placement);
+            }
         });
     }
 
