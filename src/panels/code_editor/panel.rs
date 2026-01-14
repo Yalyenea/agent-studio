@@ -371,6 +371,7 @@ impl CodeEditorPanel {
         Button::new("line-number")
             .ghost()
             .xsmall()
+            .tooltip("Toggle Line Number")
             .child(
                 Icon::new(crate::assets::Icon::Hash)
                     .size(px(16.))
@@ -393,6 +394,7 @@ impl CodeEditorPanel {
         Button::new("soft-wrap")
             .ghost()
             .xsmall()
+            .tooltip("Toggle Soft Wrap")
             .child(
                 Icon::new(crate::assets::Icon::TextWrap)
                     .size(px(16.))
@@ -419,6 +421,7 @@ impl CodeEditorPanel {
         Button::new("indent-guides")
             .ghost()
             .xsmall()
+            .tooltip("Toggle Indent Guides")
             .child(
                 Icon::new(crate::assets::Icon::ListTree)
                     .size(px(16.))
@@ -448,6 +451,7 @@ impl CodeEditorPanel {
         Button::new("line-column")
             .ghost()
             .xsmall()
+            .tooltip("Go to Line")
             .child(
                 h_flex()
                     .gap_1p5()
