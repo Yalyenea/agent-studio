@@ -254,7 +254,7 @@ impl DockWorkspace {
         match &panel_state.info {
             PanelInfo::Panel(value) => {
                 let dock_state = DockPanelState::from_value(value.clone());
-                if dock_state.story_klass.as_ref() == "ConversationPanel"
+                if dock_state.agent_studio_klass.as_ref() == "ConversationPanel"
                     && dock_state.session_id.as_deref() == Some(session_id)
                 {
                     return true;
@@ -281,35 +281,35 @@ impl DockWorkspace {
         };
 
         let container = container.read(cx);
-        let Some(story_klass) = container.story_klass.as_ref() else {
+        let Some(agent_studio_klass) = container.agent_studio_klass.as_ref() else {
             log::debug!(
-                "Panel has no story klass: session_id={} panel_id={:?}",
+                "Panel has no agent_studio klass: session_id={} panel_id={:?}",
                 session_id,
                 panel_id
             );
             return false;
         };
 
-        if story_klass.as_ref() != "ConversationPanel" {
+        if agent_studio_klass.as_ref() != "ConversationPanel" {
             log::debug!(
-                "Panel story klass mismatch: session_id={} panel_id={:?} story_klass={}",
+                "Panel agent_studio klass mismatch: session_id={} panel_id={:?} agent_studio_klass={}",
                 session_id,
                 panel_id,
-                story_klass.as_ref()
+                agent_studio_klass.as_ref()
             );
             return false;
         }
 
-        let Some(story) = container.story.clone() else {
+        let Some(agent_studio) = container.agent_studio.clone() else {
             log::debug!(
-                "Conversation panel missing story: session_id={} panel_id={:?}",
+                "Conversation panel missing agent_studio: session_id={} panel_id={:?}",
                 session_id,
                 panel_id
             );
             return false;
         };
 
-        let Ok(conversation) = story.downcast::<ConversationPanel>() else {
+        let Ok(conversation) = agent_studio.downcast::<ConversationPanel>() else {
             log::debug!(
                 "Conversation panel downcast failed: session_id={} panel_id={:?}",
                 session_id,
@@ -1021,21 +1021,21 @@ impl DockWorkspace {
 
         let name = ConversationPanel::title();
         let description = ConversationPanel::description();
-        let story = ConversationPanel::view_for_session(session_id, window, cx);
-        let story_klass = ConversationPanel::klass();
+        let agent_studio = ConversationPanel::view_for_session(session_id, window, cx);
+        let agent_studio_klass = ConversationPanel::klass();
 
         let view = cx.new(|cx| {
-            let mut story = DockPanelContainer::new(cx)
-                .story(story.into(), story_klass)
+            let mut agent_studio = DockPanelContainer::new(cx)
+                .agent_studio(agent_studio.into(), agent_studio_klass)
                 .on_active(ConversationPanel::on_active_any);
-            story.focus_handle = cx.focus_handle();
-            story.closable = ConversationPanel::closable();
-            story.zoomable = ConversationPanel::zoomable();
-            story.name = name.into();
-            story.description = description.into();
-            story.title_bg = ConversationPanel::title_bg();
-            story.paddings = ConversationPanel::paddings();
-            story
+            agent_studio.focus_handle = cx.focus_handle();
+            agent_studio.closable = ConversationPanel::closable();
+            agent_studio.zoomable = ConversationPanel::zoomable();
+            agent_studio.name = name.into();
+            agent_studio.description = description.into();
+            agent_studio.title_bg = ConversationPanel::title_bg();
+            agent_studio.paddings = ConversationPanel::paddings();
+            agent_studio
         });
 
         view

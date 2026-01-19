@@ -108,20 +108,20 @@ impl Render for AppTitleBar {
                             //         .small()
                             //         .ghost()
                             //         .on_click(|_, _, cx| {
-                            //             cx.open_url("https://github.com/longbridge/gpui-component")
+                            //             cx.open_url("https://github.com/sxhxliang/agent-studio")
                             //         }),
                             // )
-                            .child(
-                                div().relative().child(
-                                    Badge::new().count(notifications_count).max(99).child(
-                                        Button::new("bell")
-                                            .small()
-                                            .ghost()
-                                            .compact()
-                                            .icon(IconName::Bell),
-                                    ),
-                                ),
-                            ),
+                            // .child(
+                            //     div().relative().child(
+                            //         Badge::new().count(notifications_count).max(99).child(
+                            //             Button::new("bell")
+                            //                 .small()
+                            //                 .ghost()
+                            //                 .compact()
+                            //                 .icon(IconName::Bell),
+                            //         ),
+                            //     ),
+                            // ),
                     ),
             )
     }

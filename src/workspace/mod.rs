@@ -168,10 +168,10 @@ impl DockWorkspace {
         cx: &mut Context<Self>,
     ) {
         let dock_area = dock_area.clone();
-        self._save_layout_task = Some(cx.spawn_in(window, async move |story, window| {
+        self._save_layout_task = Some(cx.spawn_in(window, async move |agent_studio, window| {
             Timer::after(Duration::from_secs(10)).await;
 
-            _ = story.update_in(window, move |this, _, cx| {
+            _ = agent_studio.update_in(window, move |this, _, cx| {
                 let dock_area = dock_area.read(cx);
                 let state = dock_area.dump(cx);
 
@@ -379,8 +379,8 @@ impl DockWorkspace {
             };
 
             let window = cx.open_window(options, |window, cx| {
-                let story_view = cx.new(|cx| DockWorkspace::new(window, cx));
-                cx.new(|cx| Root::new(story_view, window, cx))
+                let agent_studio_view = cx.new(|cx| DockWorkspace::new(window, cx));
+                cx.new(|cx| Root::new(agent_studio_view, window, cx))
             })?;
 
             window
@@ -407,7 +407,7 @@ impl Render for DockWorkspace {
         let notification_layer = Root::render_notification_layer(window, cx);
 
         div()
-            .id("story-workspace")
+            .id("agent_studio-workspace")
             .on_action(cx.listener(Self::on_action_panel_action))
             .on_action(cx.listener(Self::on_action_toggle_panel_visible))
             .on_action(cx.listener(Self::on_action_toggle_dock_toggle_button))

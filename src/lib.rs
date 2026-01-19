@@ -217,7 +217,7 @@ pub fn init(cx: &mut App) {
     cx.on_action(workspace::actions::change_config_path);
 
     register_panel(cx, PANEL_NAME, |_, _, info, window, cx| {
-        let story_state = match info {
+        let agent_state = match info {
             PanelInfo::Panel(value) => DockPanelState::from_value(value.clone()),
             _ => {
                 unreachable!("Invalid PanelInfo: {:?}", info)
@@ -225,7 +225,7 @@ pub fn init(cx: &mut App) {
         };
 
         Box::new(DockPanelContainer::panel_from_state(
-            &story_state,
+            &agent_state,
             window,
             cx,
         ))
