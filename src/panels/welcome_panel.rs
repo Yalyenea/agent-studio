@@ -502,7 +502,7 @@ impl WelcomePanel {
         available_mcps
             .iter()
             .filter(|(name, config)| config.enabled && selected_set.contains(name))
-            .map(|(_, config)| config.config.clone())
+            .map(|(name, config)| config.to_acp_mcp_server(name.clone()))
             .collect()
     }
 
@@ -1224,7 +1224,7 @@ impl WelcomePanel {
                     mcp_servers = defaults
                         .into_iter()
                         .filter(|(_, config)| config.enabled)
-                        .map(|(_, config)| config.config)
+                        .map(|(name, config)| config.to_acp_mcp_server(name))
                         .collect();
                 }
             }

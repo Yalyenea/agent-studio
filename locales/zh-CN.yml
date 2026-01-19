@@ -328,6 +328,8 @@ settings.update.frequency.label: "检查频率（天）"
 settings.update.frequency.description: "自动检查更新的频率（天）。"
 
 settings.mcp.title: "MCP 服务器"
+settings.mcp.tab.interactive: "交互式编辑"
+settings.mcp.tab.json_editor: "JSON 编辑器"
 settings.mcp.group.configurations: "MCP 服务器配置"
 settings.mcp.button.add: "添加 MCP 服务器"
 settings.mcp.empty: "未配置 MCP 服务器。点击“添加 MCP 服务器”开始。"

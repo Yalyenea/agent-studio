@@ -328,6 +328,8 @@ settings.update.frequency.label: "Check Frequency (days)"
 settings.update.frequency.description: "How often to automatically check for updates (in days)."
 
 settings.mcp.title: "MCP Servers"
+settings.mcp.tab.interactive: "Interactive Editor"
+settings.mcp.tab.json_editor: "JSON Editor"
 settings.mcp.group.configurations: "MCP Server Configurations"
 settings.mcp.button.add: "Add MCP Server"
 settings.mcp.empty: "No MCP servers configured. Click 'Add MCP Server' to get started."
