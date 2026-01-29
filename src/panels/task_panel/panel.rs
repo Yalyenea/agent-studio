@@ -1092,83 +1092,120 @@ impl TaskPanel {
                                     .child(workspace_name),
                             ),
                     )
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .items_center()
-                            .child({
-                                let workspace_id = workspace_id.clone();
-                                let workspace_path = workspace.path.clone();
-                                let entity = entity.clone();
-                                Button::new(SharedString::from(format!(
-                                    "workspace-menu-{}",
-                                    workspace_id
-                                )))
-                                .icon(IconName::Ellipsis)
-                                .ghost()
-                                .xsmall()
-                                .dropdown_menu(
-                                    move |menu, window, _| {
-                                        let workspace_id = workspace_id.clone();
+                    .child(h_flex().gap_2().items_center().child({
+                        let workspace_id = workspace_id.clone();
+                        let workspace_path = workspace.path.clone();
+                        let entity = entity.clone();
+                        Button::new(SharedString::from(format!(
+                            "workspace-menu-{}",
+                            workspace_id
+                        )))
+                        .icon(IconName::Ellipsis)
+                        .ghost()
+                        .xsmall()
+                        .dropdown_menu(move |mut menu, window, _| {
+                            let workspace_id = workspace_id.clone();
+                            let workspace_path = workspace_path.clone();
+                            let entity = entity.clone();
+                            menu = menu
+                                .item(
+                                    PopupMenuItem::new(
+                                        t!("task_panel.workspace.open_terminal").to_string(),
+                                    )
+                                    .icon(IconName::SquareTerminal)
+                                    .on_click({
                                         let workspace_path = workspace_path.clone();
-                                        let entity = entity.clone();
-                                        menu.item(
-                                            PopupMenuItem::new(
-                                                t!("task_panel.workspace.open_terminal").to_string(),
-                                            )
-                                            .icon(IconName::SquareTerminal)
-                                            .on_click({
-                                                let workspace_path = workspace_path.clone();
-                                                move |_, window, cx| {
-                                                    window.dispatch_action(
-                                                        Box::new(PanelAction::add_terminal(
-                                                            gpui_component::dock::DockPlacement::Bottom,
-                                                            Some(workspace_path.clone()),
-                                                        )),
-                                                        cx,
-                                                    );
-                                                }
-                                            }),
-                                        )
-                                        .item(
-                                            PopupMenuItem::new(
-                                                t!("task_panel.workspace.open_code_editor").to_string(),
-                                            )
-                                            .icon(IconName::File)
-                                            .on_click({
-                                                let workspace_path = workspace_path.clone();
-                                                move |_, window, cx| {
-                                                    window.dispatch_action(
-                                                        Box::new(PanelAction::add_code_editor(
-                                                            gpui_component::dock::DockPlacement::Right,
-                                                            Some(workspace_path.clone()),
-                                                        )),
-                                                        cx,
-                                                    );
-                                                }
-                                            }),
-                                        )
-                                        .separator()
-                                        .item(
-                                            PopupMenuItem::new(
-                                                t!("task_panel.workspace.remove").to_string(),
-                                            )
-                                            .icon(Icon::new(crate::assets::Icon::Trash2))
-                                            .on_click(
-                                                move |_, _, cx| {
-                                                    entity.update(cx, |this, cx| {
-                                                        this.remove_workspace(
-                                                            workspace_id.clone(),
-                                                            cx,
-                                                        );
-                                                    });
-                                                },
-                                            ),
-                                        )
-                                    },
+                                        move |_, window, cx| {
+                                            window.dispatch_action(
+                                                Box::new(PanelAction::add_terminal(
+                                                    gpui_component::dock::DockPlacement::Bottom,
+                                                    Some(workspace_path.clone()),
+                                                )),
+                                                cx,
+                                            );
+                                        }
+                                    }),
                                 )
-                            }),
-                    ),
+                                .item(
+                                    PopupMenuItem::new(
+                                        t!("task_panel.workspace.open_code_editor").to_string(),
+                                    )
+                                    .icon(IconName::File)
+                                    .on_click({
+                                        let workspace_path = workspace_path.clone();
+                                        move |_, window, cx| {
+                                            window.dispatch_action(
+                                                Box::new(PanelAction::add_code_editor(
+                                                    gpui_component::dock::DockPlacement::Right,
+                                                    Some(workspace_path.clone()),
+                                                )),
+                                                cx,
+                                            );
+                                        }
+                                    }),
+                                );
+
+                            // Add all available external editors
+                            let available_editors =
+                                crate::utils::external_editor::detect_all_system_editors();
+                            for editor_config in available_editors {
+                                let workspace_path = workspace_path.clone();
+                                let editor_command = editor_config.command.clone();
+                                let editor_name = editor_config.name.clone();
+                                menu = menu.item(
+                                    PopupMenuItem::new(
+                                        t!(
+                                            "task_panel.workspace.open_in_editor",
+                                            editor = editor_config.name
+                                        )
+                                        .to_string(),
+                                    )
+                                    .icon(editor_config.icon)
+                                    .on_click(
+                                        move |_, _, _| {
+                                            if let Err(e) =
+                                                crate::utils::external_editor::open_with_editor(
+                                                    &workspace_path,
+                                                    &editor_command,
+                                                    &editor_name,
+                                                )
+                                            {
+                                                log::error!("Failed to open editor: {}", e);
+                                            }
+                                        },
+                                    ),
+                                );
+                            }
+
+                            // Add "Open Folder" menu item
+                            let workspace_path_for_folder = workspace_path.clone();
+                            menu = menu.item(
+                                PopupMenuItem::new(
+                                    t!("task_panel.workspace.open_folder").to_string(),
+                                )
+                                .icon(IconName::Folder)
+                                .on_click(move |_, _, _| {
+                                    if let Err(e) =
+                                        crate::utils::external_editor::open_in_file_manager(
+                                            &workspace_path_for_folder,
+                                        )
+                                    {
+                                        log::error!("Failed to open folder: {}", e);
+                                    }
+                                }),
+                            );
+
+                            menu.separator().item(
+                                PopupMenuItem::new(t!("task_panel.workspace.remove").to_string())
+                                    .icon(Icon::new(crate::assets::Icon::Trash2))
+                                    .on_click(move |_, _, cx| {
+                                        entity.update(cx, |this, cx| {
+                                            this.remove_workspace(workspace_id.clone(), cx);
+                                        });
+                                    }),
+                            )
+                        })
+                    })),
             )
             // Expanded children
             .when(is_expanded, |this| {
